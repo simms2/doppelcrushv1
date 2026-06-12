@@ -1,0 +1,87 @@
+{
+  "theme": "LIGHT",
+  "archetype": "3 (Pastel & Soft) & 6 (Vibrant Play)",
+  "typography": {
+    "heading_font": "Fredoka",
+    "body_font": "Quicksand",
+    "styles": {
+      "h1": "text-5xl md:text-7xl font-bold tracking-tight text-slate-900",
+      "h2": "text-3xl md:text-4xl font-bold text-slate-900",
+      "h3": "text-xl md:text-2xl font-bold text-slate-800",
+      "body": "text-base md:text-lg font-medium text-slate-700",
+      "label": "text-sm font-bold uppercase tracking-widest text-slate-500"
+    },
+    "guidance": "Do not use Inter, Roboto, or generic sans-serifs. Headings must use Fredoka. Body text must use Quicksand. Use leading-tight for headings and leading-relaxed for body."
+  },
+  "colors": {
+    "background": "bg-gradient-to-br from-pink-100 via-rose-50 to-orange-100",
+    "primary_gradient": "bg-gradient-to-r from-pink-500 to-orange-500",
+    "primary_gradient_text": "text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-orange-500",
+    "surface": "bg-white/90 backdrop-blur-xl",
+    "border": "border-2 border-slate-200",
+    "badges": {
+      "twin_energy": "bg-purple-200 text-purple-900 border-2 border-purple-300",
+      "chaos_mode": "bg-orange-200 text-orange-900 border-2 border-orange-300"
+    },
+    "text": {
+      "primary": "text-slate-900",
+      "secondary": "text-slate-600",
+      "inverse": "text-white"
+    }
+  },
+  "spacing_and_layout": {
+    "container": "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-24",
+    "bento_grid": "grid grid-cols-1 md:grid-cols-12 gap-6 md:gap-8",
+    "cards": "rounded-[2rem] p-6 md:p-8 bg-white border-4 border-white shadow-[0_8px_30px_rgb(0,0,0,0.04)]",
+    "buttons": {
+      "primary": "rounded-full px-8 py-4 font-bold text-white transition-transform hover:scale-105 shadow-xl shadow-pink-500/20 active:scale-95",
+      "secondary": "rounded-full px-8 py-4 font-bold bg-white text-slate-900 border-2 border-slate-200 transition-transform hover:scale-105 active:scale-95"
+    }
+  },
+  "motion_and_interactions": {
+    "hover_states": "All buttons and interactive cards must scale up slightly (hover:scale-105).",
+    "floating_elements": "Stickers and background elements should use Framer Motion for gentle floating animations (y: [-10, 10]).",
+    "page_transitions": "Smooth fade and slide-up animations for page entrances."
+  },
+  "components_and_stickers": {
+    "live_preview_panel": "Design as a retro 'browser-style' window. White background, rounded-2xl, top bar with 3 dots (macOS style), border-2 border-slate-200, heavy drop shadow.",
+    "stickers": "Use Lucide React icons or custom SVG for: Sparks (yellow), Lightning Bolts (purple/orange), Hearts (pink/red). Position them absolutely around the hero text and matches with subtle rotation (rotate-12, -rotate-6).",
+    "swipe_cards": "Tinder-like stack. Large image, bottom gradient overlay for text readability. Large pill buttons below for Pass/Into it."
+  },
+  "pages_guidance": {
+    "Homepage": "Dense one-page layout. Pastel gradient background. Clear header with logo. Massive hero text 'Find your DoppelCrush' with DoppelCrush in gradient. 'Selfie first. Crush later.' badge. Primary 'Upload my selfie' CTA and 'Chaos Mode' secondary button. Right side: Live preview match panel showing 3 profiles. Lower section: Two massive cards for Twin Energy (pinkish) and Chaos Mode (peachy). Heavily decorate with floating stickers.",
+    "Onboarding": "Multi-step wizard. Step 1: Account. Step 2: Upload Selfie (large drag-drop area with camera icon). Step 3: Age 18+ check. Step 4: Gender & Preferences. Step 5: Mode selection (Twin vs Chaos). Use progress bar at top.",
+    "Discover": "Swipe feed. Full height mobile layout. Match card shows large photo, Name, Age, and matching badge (Twin Energy % or Chaos Mode). Bottom controls: White Pass button, Gradient 'Into it' button.",
+    "MatchReveal": "Full screen celebratory modal/page. Shareable card UI. Confetti animation. Side-by-side photos of user and match. 'It's a Match!' big typography. CTA: 'Message them'.",
+    "Messages": "Standard chat list. Header with matches avatars. List of active conversations with unread indicators.",
+    "Auth": "Playful login/signup. Split screen on desktop (image on one side, form on other), simple form on mobile.",
+    "StaticPages": "How it works, Safety, FAQ. Keep it engaging, use bento-box layouts for FAQs. Clear, legible typography."
+  },
+  "images": {
+    "lola_match": {
+      "url": "https://images.unsplash.com/photo-1557002665-c552e1832483?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA4Mzl8MHwxfHNlYXJjaHwxfHx5b3VuZyUyMHdvbWFuJTIwZ2VuJTIweiUyMHNlbGZpZSUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5Mzc3OXww&ixlib=rb-4.1.0&q=85",
+      "description": "Lola 19, Twin Energy 92% match image"
+    },
+    "kai_match": {
+      "url": "https://images.unsplash.com/photo-1647593782884-1a6779139eb5?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NzB8MHwxfHNlYXJjaHwxfHx5b3VuZyUyMG1hbiUyMGdlbiUyMHolMjBzZWxmaWUlMjBwb3J0cmFpdHxlbnwwfHx8fDE3ODEyOTM3ODR8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Kai 20, Chaos Mode match image"
+    },
+    "ivy_match": {
+      "url": "https://images.unsplash.com/photo-1713812956759-371b4e8fc468?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA4Mzl8MHwxfHNlYXJjaHw0fHx5b3VuZyUyMHdvbWFuJTIwZ2VuJTIweiUyMHNlbGZpZSUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTI5Mzc3OXww&ixlib=rb-4.1.0&q=85",
+      "description": "Ivy 18, Twin Energy 87% match image"
+    },
+    "hero_background_abstract": {
+      "url": "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA4Mzl8MHwxfHNlYXJjaHwyNXx8YWJzdHJhY3QlMjBwYXN0ZWwlMjBsaXF1aWR8ZW58MHx8fHwxNzgxMjk0MjUwfDA&ixlib=rb-4.1.0&q=85",
+      "description": "Optional abstract pastel background texture"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Install and configure 'lucide-react' for sticker icons (Heart, Zap, Sparkles, Flame).",
+    "Install Google Fonts 'Fredoka' and 'Quicksand' in the index.html or global CSS and configure them in tailwind.config.js.",
+    "Implement the 'Browser-style window frame' layout exactly as described for the Live Preview panel on the homepage.",
+    "Use Framer Motion to add floating animations to the SVG stickers placed around the hero section.",
+    "Ensure all interactive elements have data-testid attributes for testing.",
+    "For the Swipe feed, you may use simple CSS transforms and Framer Motion for swipe mechanics or a package like react-tinder-card.",
+    "Apply generous padding and fully rounded corners (rounded-full) to buttons to match the playful aesthetic."
+  ]
+}
