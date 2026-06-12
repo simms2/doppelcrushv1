@@ -1,89 +1,482 @@
-from fastapi import FastAPI, APIRouter
+"""DoppelCrush backend - FastAPI server."""
 from dotenv import load_dotenv
-from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
-import os
-import logging
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List
-import uuid
-from datetime import datetime, timezone
-
 
 ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
+load_dotenv(ROOT_DIR / ".env")
 
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
+import logging
+import math
+import os
+import secrets
+import string
+import uuid
+from datetime import datetime, timedelta, timezone
+from typing import List, Literal, Optional
+
+import bcrypt
+import jwt
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, status
+from fastapi.middleware.cors import CORSMiddleware
+from motor.motor_asyncio import AsyncIOMotorClient
+from pydantic import BaseModel, EmailStr, Field
+
+from seed_data import get_seed_profiles_with_embeddings
+
+# ---------------------------------------------------------------------------
+# Config & DB
+# ---------------------------------------------------------------------------
+JWT_SECRET = os.environ["JWT_SECRET"]
+JWT_ALG = "HS256"
+JWT_TTL_DAYS = 30
+
+mongo_url = os.environ["MONGO_URL"]
 client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+db = client[os.environ["DB_NAME"]]
 
-# Create the main app without a prefix
-app = FastAPI()
+app = FastAPI(title="DoppelCrush API")
+api = APIRouter(prefix="/api")
 
-# Create a router with the /api prefix
-api_router = APIRouter(prefix="/api")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("doppelcrush")
 
 
-# Define Models
-class StatusCheck(BaseModel):
-    model_config = ConfigDict(extra="ignore")  # Ignore MongoDB's _id field
-    
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
-class StatusCheckCreate(BaseModel):
-    client_name: str
 
-# Add your routes to the router instead of directly to app
-@api_router.get("/")
+def hash_password(pw: str) -> str:
+    return bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
+
+
+def verify_password(pw: str, hashed: str) -> bool:
+    try:
+        return bcrypt.checkpw(pw.encode(), hashed.encode())
+    except Exception:
+        return False
+
+
+def create_access_token(user_id: str) -> str:
+    payload = {
+        "sub": user_id,
+        "exp": datetime.now(timezone.utc) + timedelta(days=JWT_TTL_DAYS),
+        "iat": datetime.now(timezone.utc),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
+
+
+def generate_referral_code(length: int = 6) -> str:
+    alphabet = string.ascii_uppercase + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+def cosine_similarity(a: List[float], b: List[float]) -> float:
+    if not a or not b or len(a) != len(b):
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a)) or 1.0
+    nb = math.sqrt(sum(x * x for x in b)) or 1.0
+    return dot / (na * nb)
+
+
+def public_profile(doc: dict) -> dict:
+    """Strip sensitive fields from a profile document."""
+    return {
+        "id": doc["id"],
+        "name": doc.get("name"),
+        "age": doc.get("age"),
+        "gender": doc.get("gender"),
+        "bio": doc.get("bio"),
+        "photo_url": doc.get("photo_url"),
+        "location": doc.get("location"),
+        "is_seed": doc.get("is_seed", False),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Auth
+# ---------------------------------------------------------------------------
+async def get_current_user(request: Request) -> dict:
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    token = auth[7:]
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    return user
+
+
+# ---------------------------------------------------------------------------
+# Models
+# ---------------------------------------------------------------------------
+Gender = Literal["woman", "man", "nonbinary"]
+LookingFor = Literal["women", "men", "everyone"]
+Mode = Literal["doppel", "chaos"]
+
+
+class SignupIn(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=6)
+    name: str = Field(min_length=1, max_length=40)
+    ref: Optional[str] = None
+
+
+class LoginIn(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class OnboardingIn(BaseModel):
+    age: int = Field(ge=18, le=120)
+    gender: Gender
+    looking_for: LookingFor
+    mode: Mode
+    bio: Optional[str] = ""
+    location: Optional[str] = ""
+    photo_url: Optional[str] = None
+    embedding: List[float] = Field(default_factory=list)
+
+
+class SwipeIn(BaseModel):
+    target_id: str
+    direction: Literal["like", "pass"]
+
+
+class ShareEventIn(BaseModel):
+    kind: Literal["reveal_card", "invite", "match_card"]
+    target_id: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Routes - meta
+# ---------------------------------------------------------------------------
+@api.get("/")
 async def root():
-    return {"message": "Hello World"}
+    return {"ok": True, "service": "DoppelCrush"}
 
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.model_dump()
-    status_obj = StatusCheck(**status_dict)
-    
-    # Convert to dict and serialize datetime to ISO string for MongoDB
-    doc = status_obj.model_dump()
-    doc['timestamp'] = doc['timestamp'].isoformat()
-    
-    _ = await db.status_checks.insert_one(doc)
-    return status_obj
 
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    # Exclude MongoDB's _id field from the query results
-    status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
-    
-    # Convert ISO string timestamps back to datetime objects
-    for check in status_checks:
-        if isinstance(check['timestamp'], str):
-            check['timestamp'] = datetime.fromisoformat(check['timestamp'])
-    
-    return status_checks
+# ---------------------------------------------------------------------------
+# Routes - auth
+# ---------------------------------------------------------------------------
+@api.post("/auth/signup")
+async def signup(data: SignupIn):
+    email = data.email.lower()
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(status_code=400, detail="Email already registered")
+    user_id = str(uuid.uuid4())
+    doc = {
+        "id": user_id,
+        "email": email,
+        "name": data.name,
+        "password_hash": hash_password(data.password),
+        "referral_code": generate_referral_code(),
+        "referred_by": data.ref,
+        "onboarding_complete": False,
+        "mode": "doppel",
+        "extra_daily_matches": 0,
+        "created_at": now_iso(),
+    }
+    await db.users.insert_one(doc)
+    # referral credit
+    if data.ref:
+        await db.users.update_one(
+            {"referral_code": data.ref},
+            {"$inc": {"extra_daily_matches": 3}},
+        )
+        await db.referrals.insert_one(
+            {
+                "id": str(uuid.uuid4()),
+                "code": data.ref,
+                "new_user_id": user_id,
+                "created_at": now_iso(),
+            }
+        )
+    token = create_access_token(user_id)
+    doc.pop("password_hash", None)
+    doc.pop("_id", None)
+    return {"token": token, "user": doc}
 
-# Include the router in the main app
-app.include_router(api_router)
 
+@api.post("/auth/login")
+async def login(data: LoginIn):
+    email = data.email.lower()
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user or not verify_password(data.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    token = create_access_token(user["id"])
+    user.pop("password_hash", None)
+    return {"token": token, "user": user}
+
+
+@api.get("/auth/me")
+async def me(user: dict = Depends(get_current_user)):
+    user.pop("password_hash", None)
+    user.pop("embedding", None)
+    return user
+
+
+# ---------------------------------------------------------------------------
+# Routes - onboarding & profile
+# ---------------------------------------------------------------------------
+@api.post("/onboarding")
+async def complete_onboarding(
+    data: OnboardingIn, user: dict = Depends(get_current_user)
+):
+    updates = {
+        "age": data.age,
+        "gender": data.gender,
+        "looking_for": data.looking_for,
+        "mode": data.mode,
+        "bio": data.bio or "",
+        "location": data.location or "",
+        "photo_url": data.photo_url,
+        "embedding": data.embedding,
+        "onboarding_complete": True,
+        "onboarded_at": now_iso(),
+    }
+    await db.users.update_one({"id": user["id"]}, {"$set": updates})
+    refreshed = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+    refreshed.pop("password_hash", None)
+    refreshed.pop("embedding", None)
+    return refreshed
+
+
+@api.patch("/me/mode")
+async def update_mode(
+    body: dict, user: dict = Depends(get_current_user)
+):
+    mode = body.get("mode")
+    if mode not in ("doppel", "chaos"):
+        raise HTTPException(status_code=400, detail="Invalid mode")
+    await db.users.update_one({"id": user["id"]}, {"$set": {"mode": mode}})
+    return {"mode": mode}
+
+
+# ---------------------------------------------------------------------------
+# Routes - discover / matching
+# ---------------------------------------------------------------------------
+def _gender_filter(looking_for: str) -> Optional[List[str]]:
+    if looking_for == "women":
+        return ["woman"]
+    if looking_for == "men":
+        return ["man"]
+    return None  # everyone
+
+
+@api.get("/discover")
+async def discover(
+    mode: Optional[str] = None,
+    limit: int = 12,
+    user: dict = Depends(get_current_user),
+):
+    """Return ranked candidate profiles for the current user."""
+    active_mode = mode or user.get("mode", "doppel")
+    looking_for = user.get("looking_for", "everyone")
+    user_embedding = user.get("embedding") or []
+    swiped_ids = {
+        s["target_id"]
+        async for s in db.swipes.find({"user_id": user["id"]}, {"target_id": 1})
+    }
+
+    query: dict = {"id": {"$ne": user["id"], "$nin": list(swiped_ids)}}
+    gf = _gender_filter(looking_for)
+    if gf:
+        query["gender"] = {"$in": gf}
+
+    candidates = await db.users.find(query, {"_id": 0}).to_list(500)
+    # Filter to only those with an embedding & photo
+    candidates = [c for c in candidates if c.get("embedding") and c.get("photo_url")]
+
+    if user_embedding:
+        scored = [
+            (cosine_similarity(user_embedding, c["embedding"]), c) for c in candidates
+        ]
+    else:
+        scored = [(0.0, c) for c in candidates]
+
+    if active_mode == "doppel":
+        scored.sort(key=lambda x: x[0], reverse=True)
+    else:  # chaos => most different / shuffle bottom half
+        scored.sort(key=lambda x: x[0])
+
+    out = []
+    for sim, c in scored[:limit]:
+        # Map cosine [-1,1] -> percent [0,100]; clamp for display
+        pct = max(0, min(100, int(round((sim + 1) * 50))))
+        # For Chaos mode display "twist" score = 100 - pct
+        display = pct if active_mode == "doppel" else max(0, 100 - pct)
+        out.append(
+            {
+                **public_profile(c),
+                "score": display,
+                "mode": active_mode,
+            }
+        )
+    return {"mode": active_mode, "results": out}
+
+
+@api.post("/swipe")
+async def swipe(data: SwipeIn, user: dict = Depends(get_current_user)):
+    target = await db.users.find_one({"id": data.target_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="Target not found")
+    await db.swipes.insert_one(
+        {
+            "id": str(uuid.uuid4()),
+            "user_id": user["id"],
+            "target_id": data.target_id,
+            "direction": data.direction,
+            "created_at": now_iso(),
+        }
+    )
+    is_match = False
+    if data.direction == "like":
+        # if target is a seed profile, auto-match for the demo experience
+        reciprocal = None
+        if target.get("is_seed"):
+            is_match = True
+        else:
+            reciprocal = await db.swipes.find_one(
+                {
+                    "user_id": data.target_id,
+                    "target_id": user["id"],
+                    "direction": "like",
+                }
+            )
+            is_match = bool(reciprocal)
+        if is_match:
+            existing = await db.matches.find_one(
+                {"users": {"$all": [user["id"], data.target_id]}}
+            )
+            if not existing:
+                await db.matches.insert_one(
+                    {
+                        "id": str(uuid.uuid4()),
+                        "users": [user["id"], data.target_id],
+                        "created_at": now_iso(),
+                    }
+                )
+    return {"match": is_match, "target": public_profile(target)}
+
+
+@api.get("/matches")
+async def list_matches(user: dict = Depends(get_current_user)):
+    docs = await db.matches.find({"users": user["id"]}, {"_id": 0}).to_list(200)
+    out = []
+    for d in docs:
+        other_id = next((u for u in d["users"] if u != user["id"]), None)
+        if not other_id:
+            continue
+        other = await db.users.find_one({"id": other_id}, {"_id": 0})
+        if not other:
+            continue
+        out.append(
+            {
+                "id": d["id"],
+                "created_at": d["created_at"],
+                "profile": public_profile(other),
+            }
+        )
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Routes - share / referral
+# ---------------------------------------------------------------------------
+@api.post("/share")
+async def log_share(data: ShareEventIn, user: dict = Depends(get_current_user)):
+    await db.share_events.insert_one(
+        {
+            "id": str(uuid.uuid4()),
+            "user_id": user["id"],
+            "kind": data.kind,
+            "target_id": data.target_id,
+            "created_at": now_iso(),
+        }
+    )
+    # reward
+    await db.users.update_one({"id": user["id"]}, {"$inc": {"extra_daily_matches": 1}})
+    return {"ok": True}
+
+
+@api.get("/referral/{code}")
+async def referral_info(code: str):
+    user = await db.users.find_one({"referral_code": code}, {"_id": 0})
+    if not user:
+        return {"valid": False}
+    return {
+        "valid": True,
+        "name": user.get("name"),
+        "photo_url": user.get("photo_url"),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Startup
+# ---------------------------------------------------------------------------
+async def ensure_indexes():
+    await db.users.create_index("email", unique=True)
+    await db.users.create_index("referral_code", unique=True, sparse=True)
+    await db.swipes.create_index([("user_id", 1), ("target_id", 1)])
+    await db.matches.create_index("users")
+
+
+async def seed_profiles():
+    """Insert seed/demo profiles if missing."""
+    seeds = get_seed_profiles_with_embeddings()
+    for s in seeds:
+        existing = await db.users.find_one({"email": f"{s['username']}@seed.doppelcrush"})
+        if existing:
+            continue
+        await db.users.insert_one(
+            {
+                "id": str(uuid.uuid4()),
+                "email": f"{s['username']}@seed.doppelcrush",
+                "name": s["name"],
+                "age": s["age"],
+                "gender": s["gender"],
+                "bio": s["bio"],
+                "photo_url": s["photo_url"],
+                "location": s["location"],
+                "embedding": s["embedding"],
+                "looking_for": "everyone",
+                "mode": "doppel",
+                "onboarding_complete": True,
+                "is_seed": True,
+                "password_hash": hash_password(secrets.token_hex(16)),
+                "referral_code": generate_referral_code(),
+                "created_at": now_iso(),
+            }
+        )
+    logger.info("Seed profiles ensured.")
+
+
+@app.on_event("startup")
+async def on_start():
+    await ensure_indexes()
+    await seed_profiles()
+
+
+@app.on_event("shutdown")
+async def on_stop():
+    client.close()
+
+
+app.include_router(api)
 app.add_middleware(
     CORSMiddleware,
+    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()

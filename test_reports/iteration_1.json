@@ -1,0 +1,39 @@
+{
+  "summary": "Completed comprehensive backend API testing for DoppelCrush. All 18 pytest tests passed (100%) covering health, auth (signup/login/me), onboarding, mode toggle, discover ranking (doppel & chaos), looking_for filter, swipe/match auto-pairing on seed profiles, swipe exclusion in discover, matches listing, share counter increment, and referral code lookup + ref-bonus on signup.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PATCH /api/me/mode", "issue": "Accepts raw `dict` body instead of a Pydantic model — works but loses input validation/schema docs."},
+      {"endpoint": "POST /api/share", "issue": "Always grants +1 extra_daily_matches with no daily cap or per-target dedup — could be farmed by repeated calls."},
+      {"endpoint": "POST /api/swipe", "issue": "No uniqueness constraint on (user_id,target_id); a user can swipe the same target multiple times and inflate swipe history (auto-match dedupe is handled, but swipes collection grows)."},
+      {"endpoint": "GET /api/discover", "issue": "Filters out candidates without embedding/photo silently. If a real user finishes onboarding without a photo_url they will never appear; acceptable but worth a note."},
+      {"endpoint": "Startup seeding", "issue": "Seed insert uses `id: uuid.uuid4()` each cold start but skips when email exists — fine; however referral_code is regenerated only on first insert which is correct. No issue."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_doppelcrush.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Consider converting PATCH /api/me/mode body to a Pydantic model (e.g. ModeIn) for proper validation.",
+    "Consider rate-limiting/daily-capping POST /api/share to prevent extra_daily_matches farming.",
+    "Optionally add unique index on swipes (user_id,target_id) so repeat swipes are no-ops."
+  ],
+  "critical_code_review_comments": [
+    "JWT secret is loaded from env correctly; bcrypt used for password hashing — good.",
+    "MongoDB _id is excluded from all responses via projection — good.",
+    "Cosine similarity implementation is correct; doppel sorts desc, chaos asc — verified by tests.",
+    "Auth dependency raises 401 on missing/invalid token consistently — verified.",
+    "Seed profiles loaded at startup with deterministic 128-dim normalized embeddings — verified.",
+    "CORS uses allow_credentials=True with `*` origin (default) — fine for dev but should set explicit origins for prod (CORS_ORIGINS supported)."
+  ],
+  "updated_files": ["/app/backend/tests/test_doppelcrush.py"],
+  "success_rate": {"backend": "100%", "frontend": "skipped"},
+  "test_credentials": "Created at runtime: pookie+<timestamp>@example.com / crushme123",
+  "seed_data_creation": "Server auto-seeds 12 profiles at startup; tests rely on those.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend is fully working. Test file /app/backend/tests/test_doppelcrush.py covers all 18 endpoints/flows listed in the review request. Uses timestamped emails for uniqueness. Run with REACT_APP_BACKEND_URL set or it reads /app/frontend/.env automatically. Frontend (face-api.js client-side embedding) was not tested per request.",
+  "rca of the issue": "N/A — no failures."
+}
