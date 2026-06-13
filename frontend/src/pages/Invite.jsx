@@ -20,6 +20,7 @@ export default function Invite() {
   const [copied, setCopied] = useState(false);
   const [toast, setToast] = useState("");
   const [cardPreview, setCardPreview] = useState("");
+  const [cardFormat, setCardFormat] = useState("square"); // "square" | "story"
   const cardBlobRef = useRef(null);
 
   useEffect(() => {
@@ -37,17 +38,17 @@ export default function Invite() {
   const fullShare = `${shareText}\n${shareUrl}`;
   const encoded = encodeURIComponent(fullShare);
 
-  // Build the card whenever code/url is ready
+  // Build the card whenever code/url/format is ready
   useEffect(() => {
     let alive = true;
     if (!code) return;
-    generateShareCard({ code, url: shareUrl }).then(({ blob, dataUrl }) => {
+    generateShareCard({ code, url: shareUrl, format: cardFormat }).then(({ blob, dataUrl }) => {
       if (!alive) return;
       cardBlobRef.current = blob;
       setCardPreview(dataUrl);
     }).catch(() => {});
     return () => { alive = false; };
-  }, [code, shareUrl]);
+  }, [code, shareUrl, cardFormat]);
 
   const flashToast = (msg) => {
     setToast(msg);
@@ -90,7 +91,7 @@ export default function Invite() {
 
   const onDownload = () => {
     if (!cardBlobRef.current) return;
-    downloadBlob(cardBlobRef.current, `doppelcrush-${(code || "card").toLowerCase()}.png`);
+    downloadBlob(cardBlobRef.current, `doppelcrush-${(code || "card").toLowerCase()}-${cardFormat}.png`);
     trackShare("invite_card");
     flashToast("Card downloaded — drop it in your story 💖");
   };
@@ -100,7 +101,7 @@ export default function Invite() {
     // copy the caption, then open Instagram so the user can paste into a Story / DM / post.
     try {
       if (cardBlobRef.current) {
-        downloadBlob(cardBlobRef.current, `doppelcrush-${(code || "card").toLowerCase()}.png`);
+        downloadBlob(cardBlobRef.current, `doppelcrush-${(code || "card").toLowerCase()}-${cardFormat}.png`);
       }
       await navigator.clipboard.writeText(fullShare).catch(() => {});
       trackShare("instagram");
@@ -187,9 +188,29 @@ export default function Invite() {
                   {code || "—"}
                 </div>
 
+                {/* Format toggle */}
+                <div className="mt-4 inline-flex p-1 bg-white border-2 border-slate-100 rounded-full" data-testid="card-format-toggle">
+                  <button
+                    type="button"
+                    onClick={() => setCardFormat("square")}
+                    className={`px-4 py-1.5 rounded-full text-xs font-display font-bold transition-colors ${cardFormat === "square" ? "bg-slate-900 text-white" : "text-slate-600"}`}
+                    data-testid="format-square-btn"
+                  >
+                    Post · 1:1
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCardFormat("story")}
+                    className={`px-4 py-1.5 rounded-full text-xs font-display font-bold transition-colors ${cardFormat === "story" ? "bg-slate-900 text-white" : "text-slate-600"}`}
+                    data-testid="format-story-btn"
+                  >
+                    Story · 9:16
+                  </button>
+                </div>
+
                 {/* Fun card preview */}
-                <div className="mt-5 relative" data-testid="share-card-preview-wrap">
-                  <div className="rounded-3xl overflow-hidden border-2 border-slate-900/10 shadow-lg shadow-pink-200 bg-white">
+                <div className="mt-3 relative" data-testid="share-card-preview-wrap">
+                  <div className="rounded-3xl overflow-hidden border-2 border-slate-900/10 shadow-lg shadow-pink-200 bg-white mx-auto" style={cardFormat === "story" ? { maxWidth: 240 } : undefined}>
                     {cardPreview ? (
                       <img
                         src={cardPreview}

@@ -42,7 +42,9 @@ export default function Profile() {
 
   const currentQuality = newQuality ?? user?.embedding_quality ?? 0.6;
   const qualityPct = Math.round(currentQuality * 100);
-  const twinUrl = user?.id ? `${window.location.origin}/your-twin/${user.id}` : "";
+  const twinUrl = user?.id
+    ? `${process.env.REACT_APP_BACKEND_URL}/api/share/twin-page/${user.id}`
+    : "";
 
   useEffect(() => {
     loadFaceModels().catch(() => {});

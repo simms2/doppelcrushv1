@@ -1,0 +1,33 @@
+{
+  "summary": "Backend-only verification for DoppelCrush post-refactor iteration. Authored /app/backend/tests/test_iteration7.py with 29 pytest tests covering (a) zero-regression for all pre-existing endpoints (auth/signup, login, me, discover, swipe, matches, messages, me/stats, me/unread, referral, share, compare), (b) new GET /api/og/twin/{user_id}.png — 1200x630 PNG + Cache-Control + 404 for missing/non-onboarded users, (c) new GET /api/share/twin-page/{user_id} — HTML with og:title/og:description/og:image/og:url + twitter:card; honors x-forwarded-proto/host so absolute URLs use the public https host; never 404s even for invalid IDs, (d) extended ShareEventIn literal now accepts whatsapp/x/instagram/threads/invite_card and still rejects unknown kinds with 422; increments extra_daily_matches, (e) sliding-window rate limiting — 31st call within 60s on /api/share/twin/{id} returns 429 and 61st call within 60s on /api/og/twin/{id}.png returns 429, (f) lifespan seed_profiles startup populates 12 named seed users discoverable via /api/discover. Local iteration7 file: 28 passed / 1 skipped (messages skip is non-critical — only triggered when the auto-match seed has no chat readiness; covered separately by older iterations). Full regression run across ALL test files (iterations 1–7): 118 passed, 1 skipped, 0 failed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/discover", "issue": "Response shape changed from list to {mode, results}; not breaking but worth noting for any external API consumers / older client builds."},
+      {"endpoint": "/api/matches/{id}/messages", "issue": "One test was skipped because the auto-match created during swipe didn't yield a messageable match for the test user in this run. Covered by older iteration tests; not a regression."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration7.py",
+    "/app/test_reports/pytest/iteration7_results.xml",
+    "/app/test_reports/pytest/all_iterations.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "/app/backend/routers/viral.py twin_share_page: builds HTML via large f-string with manual `html.escape`. Works, but consider switching to a Jinja template for safer escaping & maintainability as more meta tags are added.",
+    "Rate limiter is in-process only (deps.rate_limit). With multiple backend replicas behind the ingress, per-IP windows are per-pod, so effective ceiling = N_pods × limit. Acceptable for current single-pod deploy; flag as a follow-up for horizontal scaling.",
+    "_fetch_user_photo_bytes does a synchronous `requests.get` inside an async route — blocks the event loop. Move to httpx.AsyncClient or run in a thread executor for production traffic.",
+    "og_twin_image returns 404 for non-existent users which is correct, but rich-link unfurlers (FB, Slack) commonly cache 404 aggressively. Consider returning a generic fallback PNG (still 200) to keep previews healthy on stale/expired profile IDs."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration7.py (new file)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "n/a (skipped per request)"},
+  "test_credentials": "Runtime-signed-up users (TEST_iter7_*@example.com); seed users are non-loginable per /app/memory/test_credentials.md.",
+  "seed_data_creation": "All test users are created at runtime with `test_iter7_*` email prefix (server lower-cases emails). They share the test Mongo DB but use unique UUID suffixes so they do not collide across runs.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 7 backend changes (refactor + OG image + twin-page + new share kinds + rate limits + lifespan seed) are 100% verified. New test file is /app/backend/tests/test_iteration7.py. Use BASE_URL from REACT_APP_BACKEND_URL. NOTE: server lower-cases emails on signup, and /api/discover returns {mode, results} not a bare list — helper `_discover_cards` in the file handles both shapes. Frontend testing for these endpoints is still pending per the request scope.",
+  "rca of the issue": "N/A — no bugs found. Initial test failures were all in test scaffolding (email casing and discover response shape) and were fixed inside the test file only; no production code changes were required."
+}

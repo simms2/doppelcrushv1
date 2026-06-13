@@ -57,7 +57,10 @@ class SwipeIn(BaseModel):
 
 
 class ShareEventIn(BaseModel):
-    kind: Literal["reveal_card", "invite", "match_card", "story", "square"]
+    kind: Literal[
+        "reveal_card", "invite", "invite_card", "match_card", "story", "square",
+        "whatsapp", "x", "instagram", "threads",
+    ]
     target_id: Optional[str] = None
 
 

@@ -115,10 +115,16 @@ function drawBolt(ctx, cx, cy, size, color = "#8a5cf6", rotate = 0) {
 
 // Generate the share card.
 // Returns a Promise<Blob> (PNG) plus the dataURL preview.
-export async function generateShareCard({ code = "—", url = "" } = {}) {
+// `format`: "square" (1080x1080, default — Instagram feed / generic) or
+//           "story"  (1080x1920 — IG/Threads/Snap stories, vertical).
+export async function generateShareCard({ code = "—", url = "", format = "square" } = {}) {
+  const isStory = format === "story";
+  const cw = isStory ? 1080 : W;
+  const ch = isStory ? 1920 : H;
+
   const canvas = document.createElement("canvas");
-  canvas.width = W;
-  canvas.height = H;
+  canvas.width = cw;
+  canvas.height = ch;
   const ctx = canvas.getContext("2d");
 
   // Wait for fonts that the page already loaded
@@ -127,17 +133,18 @@ export async function generateShareCard({ code = "—", url = "" } = {}) {
   }
 
   // --- Background: bold gradient (yellow -> pink -> orange) ---
-  const grad = ctx.createLinearGradient(0, 0, W, H);
+  const grad = ctx.createLinearGradient(0, 0, cw, ch);
   grad.addColorStop(0, "#ffd84d");
   grad.addColorStop(0.45, "#ff3d8a");
   grad.addColorStop(1, "#ff6a3d");
   ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, H);
+  ctx.fillRect(0, 0, cw, ch);
 
   // halftone dots
   ctx.fillStyle = "rgba(15,23,42,0.08)";
-  for (let y = 0; y < H; y += 28) {
-    for (let x = 0; x < W; x += 28) {
+  const step = isStory ? 32 : 28;
+  for (let y = 0; y < ch; y += step) {
+    for (let x = 0; x < cw; x += step) {
       ctx.beginPath();
       ctx.arc(x, y, 2.2, 0, Math.PI * 2);
       ctx.fill();
@@ -147,12 +154,23 @@ export async function generateShareCard({ code = "—", url = "" } = {}) {
   // bold inner frame
   ctx.lineWidth = 14;
   ctx.strokeStyle = "#0f172a";
-  roundRect(ctx, 36, 36, W - 72, H - 72, 56);
+  roundRect(ctx, 36, 36, cw - 72, ch - 72, 56);
   ctx.stroke();
+
+  // Vertical layout has more breathing room — shift anchors.
+  // Anchors are tuned so the same card design works for both formats.
+  const cx = cw / 2;
+  const tagY = isStory ? 220 : 130;
+  const h1Y = isStory ? 460 : 290;
+  const h2Y = isStory ? 620 : 430;
+  const bubbleY = isStory ? 980 : 640;
+  const subtitleY = isStory ? 1280 : 830;
+  const tagLineY = isStory ? 1360 : 900;
+  const footerY = isStory ? 1700 : 1000;
 
   // --- Top tag pill ---
   ctx.save();
-  ctx.translate(W / 2, 130);
+  ctx.translate(cx, tagY);
   ctx.rotate(-0.04);
   const tagW = 460, tagH = 78;
   roundRect(ctx, -tagW / 2, -tagH / 2, tagW, tagH, tagH / 2);
@@ -166,13 +184,13 @@ export async function generateShareCard({ code = "—", url = "" } = {}) {
   ctx.restore();
 
   // --- Headline: I FOUND MY DOPPEL ---
-  drawStrokedText(ctx, "I FOUND", W / 2, 290, {
+  drawStrokedText(ctx, "I FOUND", cx, h1Y, {
     font: "900 150px 'Bricolage Grotesque', 'Inter', system-ui, sans-serif",
     fill: "#ffffff",
     strokeWidth: 16,
     rotate: -0.02,
   });
-  drawStrokedText(ctx, "MY DOPPEL", W / 2, 430, {
+  drawStrokedText(ctx, "MY DOPPEL", cx, h2Y, {
     font: "900 150px 'Bricolage Grotesque', 'Inter', system-ui, sans-serif",
     fill: "#ffd84d",
     strokeWidth: 16,
@@ -181,7 +199,7 @@ export async function generateShareCard({ code = "—", url = "" } = {}) {
 
   // --- Code bubble ---
   ctx.save();
-  ctx.translate(W / 2, 640);
+  ctx.translate(cx, bubbleY);
   ctx.rotate(-0.025);
   const bubbleW = 760, bubbleH = 220;
   roundRect(ctx, -bubbleW / 2, -bubbleH / 2, bubbleW, bubbleH, 48);
@@ -206,14 +224,14 @@ export async function generateShareCard({ code = "—", url = "" } = {}) {
   ctx.restore();
 
   // --- Subtitle: TWIN ENERGY or CHAOS. ---
-  drawStrokedText(ctx, "TWIN ENERGY ⚡ OR CHAOS", W / 2, 830, {
+  drawStrokedText(ctx, "TWIN ENERGY ⚡ OR CHAOS", cx, subtitleY, {
     font: "900 56px 'Bricolage Grotesque', 'Inter', system-ui, sans-serif",
     fill: "#ffffff",
     strokeWidth: 10,
     rotate: 0,
   });
 
-  drawStrokedText(ctx, "join me, it's wild 💀", W / 2, 900, {
+  drawStrokedText(ctx, "join me, it's wild 💀", cx, tagLineY, {
     font: "800 42px 'Bricolage Grotesque', 'Inter', system-ui, sans-serif",
     fill: "#0f172a",
     stroke: "#ffd84d",
@@ -222,7 +240,7 @@ export async function generateShareCard({ code = "—", url = "" } = {}) {
 
   // --- Footer URL ---
   ctx.save();
-  ctx.translate(W / 2, 1000);
+  ctx.translate(cx, footerY);
   const footW = 820, footH = 70;
   roundRect(ctx, -footW / 2, -footH / 2, footW, footH, footH / 2);
   ctx.fillStyle = "#0f172a";
@@ -231,18 +249,28 @@ export async function generateShareCard({ code = "—", url = "" } = {}) {
   ctx.fillStyle = "#ffffff";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  // strip protocol for cleanliness
   const cleanUrl = (url || "").replace(/^https?:\/\//, "");
   ctx.fillText(cleanUrl || "doppelcrush.app", 0, 2);
   ctx.restore();
 
-  // --- Stickers (drawn last to overlap) ---
-  drawHeart(ctx, 140, 240, 150, "#ff2d8a", -0.35);
-  drawHeart(ctx, W - 150, 200, 130, "#ffd84d", 0.45);
-  drawSpark(ctx, W - 130, 560, 120, "#ffffff", 0.2);
-  drawSpark(ctx, 100, 720, 100, "#ffd84d", -0.4);
-  drawBolt(ctx, W - 110, 870, 130, "#8a5cf6", 0.25);
-  drawBolt(ctx, 120, 470, 110, "#0f172a", -0.2);
+  // --- Stickers (drawn last to overlap). Story format gets a few extras. ---
+  if (isStory) {
+    drawHeart(ctx, 160, 360, 170, "#ff2d8a", -0.35);
+    drawHeart(ctx, cw - 170, 320, 140, "#ffd84d", 0.45);
+    drawSpark(ctx, cw - 140, 880, 130, "#ffffff", 0.2);
+    drawSpark(ctx, 120, 1080, 110, "#ffd84d", -0.4);
+    drawBolt(ctx, cw - 120, 1480, 140, "#8a5cf6", 0.25);
+    drawBolt(ctx, 130, 760, 120, "#0f172a", -0.2);
+    drawHeart(ctx, cw - 200, 1640, 90, "#ff6a3d", 0.6);
+    drawSpark(ctx, 200, 1600, 80, "#ffffff", 0.5);
+  } else {
+    drawHeart(ctx, 140, 240, 150, "#ff2d8a", -0.35);
+    drawHeart(ctx, cw - 150, 200, 130, "#ffd84d", 0.45);
+    drawSpark(ctx, cw - 130, 560, 120, "#ffffff", 0.2);
+    drawSpark(ctx, 100, 720, 100, "#ffd84d", -0.4);
+    drawBolt(ctx, cw - 110, 870, 130, "#8a5cf6", 0.25);
+    drawBolt(ctx, 120, 470, 110, "#0f172a", -0.2);
+  }
 
   // export
   const dataUrl = canvas.toDataURL("image/png");
