@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Copy, Gift, Users, Sparkles, Send, Share2, Trophy } from "lucide-react";
+import { Copy, Gift, Users, Sparkles, Send, Share2, Trophy, Download, Instagram, AtSign } from "lucide-react";
 import Header from "@/components/Header";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import { Sticker } from "@/components/Stickers";
+import { generateShareCard, downloadBlob } from "@/lib/shareCard";
 
 const REWARDS = [
   { thresh: 1, label: "Chaos Boost", desc: "Unlock a 24h Chaos boost", icon: Sparkles },
@@ -17,38 +18,104 @@ export default function Invite() {
   const { user } = useAuth();
   const [stats, setStats] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [toast, setToast] = useState("");
+  const [cardPreview, setCardPreview] = useState("");
+  const cardBlobRef = useRef(null);
 
   useEffect(() => {
     api.get("/me/stats").then(({ data }) => setStats(data)).catch(() => {});
   }, []);
 
+  const code = user?.referral_code || stats?.referral_code || "";
+
   const shareUrl = useMemo(() => {
     const base = window.location.origin;
-    const code = user?.referral_code || stats?.referral_code || "";
     return `${base}/signup?ref=${code}&source=invite&mode=${user?.mode || "doppel"}`;
-  }, [user, stats]);
+  }, [user, code]);
 
-  const shareText = `Find your DoppelCrush. Upload a selfie, get your Twin Energy match in 10s. Use my link 👇`;
-  const encoded = encodeURIComponent(`${shareText} ${shareUrl}`);
+  const shareText = `Join me on DoppelCrush 💖 Find your twin or your chaos match. Use my code: ${code}`;
+  const fullShare = `${shareText}\n${shareUrl}`;
+  const encoded = encodeURIComponent(fullShare);
+
+  // Build the card whenever code/url is ready
+  useEffect(() => {
+    let alive = true;
+    if (!code) return;
+    generateShareCard({ code, url: shareUrl }).then(({ blob, dataUrl }) => {
+      if (!alive) return;
+      cardBlobRef.current = blob;
+      setCardPreview(dataUrl);
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [code, shareUrl]);
+
+  const flashToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(""), 2400);
+  };
+
+  const trackShare = (kind) => {
+    api.post("/share", { kind }).catch(() => {});
+  };
 
   const onCopy = async () => {
     try {
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
-      api.post("/share", { kind: "invite" }).catch(() => {});
+      trackShare("invite");
       setTimeout(() => setCopied(false), 1800);
-    } catch {}
+    } catch { /* clipboard blocked */ }
   };
 
   const onNative = async () => {
     try {
+      // Try to share with the image file when supported
+      const blob = cardBlobRef.current;
+      if (blob && navigator.canShare) {
+        const file = new File([blob], "doppelcrush-invite.png", { type: "image/png" });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({ title: "DoppelCrush", text: shareText, url: shareUrl, files: [file] });
+          trackShare("invite");
+          return;
+        }
+      }
       if (navigator.share) {
         await navigator.share({ title: "DoppelCrush", text: shareText, url: shareUrl });
-        api.post("/share", { kind: "invite" }).catch(() => {});
+        trackShare("invite");
       } else {
         onCopy();
       }
-    } catch {}
+    } catch { /* user cancelled */ }
+  };
+
+  const onDownload = () => {
+    if (!cardBlobRef.current) return;
+    downloadBlob(cardBlobRef.current, `doppelcrush-${(code || "card").toLowerCase()}.png`);
+    trackShare("invite_card");
+    flashToast("Card downloaded — drop it in your story 💖");
+  };
+
+  const onInstagram = async () => {
+    // Instagram has no web share intent: best practice = download the card,
+    // copy the caption, then open Instagram so the user can paste into a Story / DM / post.
+    try {
+      if (cardBlobRef.current) {
+        downloadBlob(cardBlobRef.current, `doppelcrush-${(code || "card").toLowerCase()}.png`);
+      }
+      await navigator.clipboard.writeText(fullShare).catch(() => {});
+      trackShare("instagram");
+      flashToast("Card downloaded + caption copied. Opening Instagram…");
+      setTimeout(() => {
+        window.open("https://www.instagram.com/", "_blank", "noopener,noreferrer");
+      }, 600);
+    } catch { /* clipboard blocked */ }
+  };
+
+  const onThreads = () => {
+    // Threads supports a web intent for posting text.
+    const url = `https://www.threads.net/intent/post?text=${encoded}`;
+    trackShare("threads");
+    window.open(url, "_blank", "noopener,noreferrer");
   };
 
   const friendsJoined = stats?.friends_joined ?? 0;
@@ -117,8 +184,35 @@ export default function Invite() {
               <div className="crush-frame p-6 sm:p-8 text-center bg-gradient-to-br from-white via-pink-50 to-orange-50">
                 <div className="text-xs font-display font-bold uppercase tracking-widest text-slate-500">Your code</div>
                 <div className="font-display text-5xl font-bold mt-2 crush-text-grad tracking-wider" data-testid="invite-code">
-                  {user?.referral_code || "—"}
+                  {code || "—"}
                 </div>
+
+                {/* Fun card preview */}
+                <div className="mt-5 relative" data-testid="share-card-preview-wrap">
+                  <div className="rounded-3xl overflow-hidden border-2 border-slate-900/10 shadow-lg shadow-pink-200 bg-white">
+                    {cardPreview ? (
+                      <img
+                        src={cardPreview}
+                        alt="Your DoppelCrush share card"
+                        className="block w-full h-auto"
+                        data-testid="share-card-preview"
+                      />
+                    ) : (
+                      <div className="aspect-square w-full grid place-items-center bg-gradient-to-br from-yellow-100 via-pink-100 to-orange-100">
+                        <div className="font-display font-bold text-slate-500 text-sm">Cooking up your card…</div>
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={onDownload}
+                    disabled={!cardPreview}
+                    className="absolute top-3 right-3 crush-cta rounded-full px-3 py-1.5 text-xs font-display font-bold inline-flex items-center gap-1.5 disabled:opacity-50"
+                    data-testid="share-card-download-btn"
+                  >
+                    <Download className="w-3.5 h-3.5" /> PNG
+                  </button>
+                </div>
+
                 <div className="mt-5 flex items-center gap-2 bg-white rounded-full p-1.5 border-2 border-slate-100">
                   <input
                     value={shareUrl}
@@ -135,14 +229,14 @@ export default function Invite() {
                   </button>
                 </div>
 
-                <div className="mt-5 grid grid-cols-3 gap-2">
+                <div className="mt-5 grid grid-cols-2 sm:grid-cols-3 gap-2">
                   <a
                     href={`https://wa.me/?text=${encoded}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="crush-secondary rounded-full py-2.5 font-display font-bold text-sm inline-flex items-center justify-center gap-1.5"
                     data-testid="share-whatsapp-btn"
-                    onClick={() => api.post("/share", { kind: "invite" }).catch(() => {})}
+                    onClick={() => trackShare("whatsapp")}
                   >
                     <Send className="w-4 h-4 text-emerald-600" /> WhatsApp
                   </a>
@@ -152,18 +246,38 @@ export default function Invite() {
                     rel="noopener noreferrer"
                     className="crush-secondary rounded-full py-2.5 font-display font-bold text-sm inline-flex items-center justify-center gap-1.5"
                     data-testid="share-x-btn"
-                    onClick={() => api.post("/share", { kind: "invite" }).catch(() => {})}
+                    onClick={() => trackShare("x")}
                   >
                     <span className="font-display">𝕏</span> Post
                   </a>
                   <button
+                    type="button"
+                    onClick={onInstagram}
+                    className="crush-secondary rounded-full py-2.5 font-display font-bold text-sm inline-flex items-center justify-center gap-1.5"
+                    data-testid="share-instagram-btn"
+                  >
+                    <Instagram className="w-4 h-4 text-pink-600" /> Instagram
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onThreads}
+                    className="crush-secondary rounded-full py-2.5 font-display font-bold text-sm inline-flex items-center justify-center gap-1.5"
+                    data-testid="share-threads-btn"
+                  >
+                    <AtSign className="w-4 h-4 text-slate-900" /> Threads
+                  </button>
+                  <button
                     onClick={onNative}
-                    className="crush-cta rounded-full py-2.5 font-display font-bold text-sm inline-flex items-center justify-center gap-1.5"
+                    className="crush-cta rounded-full py-2.5 font-display font-bold text-sm inline-flex items-center justify-center gap-1.5 col-span-2 sm:col-span-1"
                     data-testid="share-native-btn"
                   >
                     <Share2 className="w-4 h-4" /> Share
                   </button>
                 </div>
+
+                <p className="mt-4 text-[11px] font-body text-slate-500">
+                  Instagram doesn&apos;t allow direct web posting — we&apos;ll download the card and copy the caption so you can paste it into your Story or DM.
+                </p>
               </div>
 
               <Link
@@ -186,6 +300,15 @@ export default function Invite() {
           </div>
         </div>
       </div>
+
+      {toast ? (
+        <div
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-full bg-slate-900 text-white font-display font-bold text-sm shadow-xl shadow-pink-300/40"
+          data-testid="share-toast"
+        >
+          {toast}
+        </div>
+      ) : null}
     </div>
   );
 }

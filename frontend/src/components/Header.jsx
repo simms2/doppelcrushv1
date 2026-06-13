@@ -56,7 +56,7 @@ export default function Header({ inline = false }) {
       className={`crush-frame flex items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4 ${inline ? "" : "mb-6"}`}
       data-testid="site-header"
     >
-      <Link to={onboarded ? "/discover" : "/"} className="flex items-center min-w-0">
+      <Link to="/" className="flex items-center min-w-0" data-testid="header-logo-link">
         <LogoBadge />
       </Link>
 

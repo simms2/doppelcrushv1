@@ -25,10 +25,12 @@ Brand: glossy, playful, social, viral, confident, safe. Never creepy.
 - ✅ Match reveal page with HTML5-canvas branded share card (square + story formats)
 - ✅ Static pages: How it works / Safety / FAQ
 - ✅ Viral growth system
-  - `/invite` page — code, copy, WhatsApp / X / native share, tracker, tiered rewards
+  - `/invite` page — code, copy, WhatsApp / X / Instagram / Threads / native share, fun PNG card download
   - `/compare` group challenge rooms — strongest twin pair, chaos contrast, funniest mismatch
   - `/api/me/stats`, `/api/compare`, `/api/compare/{id}/join`, `/api/compare/{id}`
-  - Share kinds: reveal_card, invite, match_card, story, square (+1 bonus per share)
+  - Share kinds: reveal_card, invite, invite_card, instagram, threads, whatsapp, x, match_card, story, square (+1 bonus per share)
+- ✅ Bold meme-y canvas-rendered share card (1080x1080 PNG) auto-downloaded for Instagram, copied caption flow
+- ✅ Header logo now routes to homepage (/) instead of /discover
 - ✅ Backend tests: 32 passing (iteration 1: 18 + iteration 2: 14)
 
 ## Backlog (P0/P1)
