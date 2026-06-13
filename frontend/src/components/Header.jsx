@@ -4,8 +4,9 @@ import { useAuth } from "@/contexts/AuthContext";
 export const LogoBadge = () => (
   <div className="flex items-center gap-3" data-testid="dc-logo">
     <div className="relative w-12 h-12 rounded-2xl overflow-hidden shadow-lg shadow-pink-200">
-      <div className="absolute inset-0 bg-gradient-to-br from-pink-400 via-pink-500 to-orange-400" />
-      <div className="absolute inset-0 flex items-center justify-center font-display text-white text-2xl font-bold">D</div>
+      <div className="absolute inset-0 bg-gradient-to-br from-yellow-300 via-pink-500 to-orange-500" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_25%,rgba(255,255,255,0.6),rgba(255,255,255,0)_50%)]" />
+      <div className="absolute inset-0 flex items-center justify-center font-display text-white text-3xl font-bold" style={{textShadow:"0 2px 0 rgba(155,18,76,0.4)"}}>D</div>
     </div>
     <div className="leading-tight">
       <div className="font-display text-xl sm:text-2xl font-bold tracking-tight text-slate-900">DoppelCrush</div>
@@ -33,6 +34,9 @@ export default function Header({ inline = false }) {
         ) : null}
         {user && user.onboarding_complete ? (
           <Link to="/messages" className="hover:text-pink-600" data-testid="nav-messages">Messages</Link>
+        ) : null}
+        {user ? (
+          <Link to="/invite" className="hover:text-pink-600" data-testid="nav-invite">Invite</Link>
         ) : null}
       </nav>
       <div className="flex items-center gap-2">

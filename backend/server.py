@@ -153,8 +153,12 @@ class SwipeIn(BaseModel):
 
 
 class ShareEventIn(BaseModel):
-    kind: Literal["reveal_card", "invite", "match_card"]
+    kind: Literal["reveal_card", "invite", "match_card", "story", "square"]
     target_id: Optional[str] = None
+
+
+class CompareCreateIn(BaseModel):
+    title: Optional[str] = "DoppelCrush group challenge"
 
 
 # ---------------------------------------------------------------------------
@@ -418,6 +422,94 @@ async def referral_info(code: str):
         "valid": True,
         "name": user.get("name"),
         "photo_url": user.get("photo_url"),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Routes - growth stats
+# ---------------------------------------------------------------------------
+@api.get("/me/stats")
+async def my_stats(user: dict = Depends(get_current_user)):
+    friends_joined = await db.referrals.count_documents({"code": user.get("referral_code")})
+    shares = await db.share_events.count_documents({"user_id": user["id"]})
+    matches = await db.matches.count_documents({"users": user["id"]})
+    return {
+        "friends_joined": friends_joined,
+        "bonus_matches": user.get("extra_daily_matches", 0),
+        "shares": shares,
+        "matches": matches,
+        "referral_code": user.get("referral_code"),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Routes - Compare rooms (group challenge)
+# ---------------------------------------------------------------------------
+@api.post("/compare")
+async def create_compare(data: CompareCreateIn, user: dict = Depends(get_current_user)):
+    room_id = str(uuid.uuid4())[:8]
+    await db.compare_rooms.insert_one({
+        "id": room_id,
+        "host_id": user["id"],
+        "title": data.title,
+        "participants": [user["id"]],
+        "created_at": now_iso(),
+    })
+    return {"id": room_id}
+
+
+@api.post("/compare/{room_id}/join")
+async def join_compare(room_id: str, user: dict = Depends(get_current_user)):
+    room = await db.compare_rooms.find_one({"id": room_id})
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    if user["id"] not in room["participants"]:
+        await db.compare_rooms.update_one(
+            {"id": room_id},
+            {"$addToSet": {"participants": user["id"]}},
+        )
+    return {"id": room_id, "joined": True}
+
+
+@api.get("/compare/{room_id}")
+async def get_compare(room_id: str, user: dict = Depends(get_current_user)):
+    room = await db.compare_rooms.find_one({"id": room_id}, {"_id": 0})
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    # auto-join the viewer (low friction)
+    if user["id"] not in room["participants"]:
+        await db.compare_rooms.update_one(
+            {"id": room_id},
+            {"$addToSet": {"participants": user["id"]}},
+        )
+        room["participants"].append(user["id"])
+
+    users = await db.users.find(
+        {"id": {"$in": room["participants"]}}, {"_id": 0}
+    ).to_list(50)
+    # build pairwise similarities
+    pairs = []
+    for i in range(len(users)):
+        for j in range(i + 1, len(users)):
+            a, b = users[i], users[j]
+            if not a.get("embedding") or not b.get("embedding"):
+                continue
+            sim = cosine_similarity(a["embedding"], b["embedding"])
+            pct = max(0, min(100, int(round((sim + 1) * 50))))
+            pairs.append({"a": public_profile(a), "b": public_profile(b), "score": pct})
+    pairs.sort(key=lambda p: p["score"], reverse=True)
+    strongest_twin = pairs[0] if pairs else None
+    chaos_contrast = pairs[-1] if len(pairs) > 1 else None
+    funniest = pairs[-1] if len(pairs) >= 1 else None
+    return {
+        "id": room["id"],
+        "title": room["title"],
+        "participants": [public_profile(u) for u in users if u.get("photo_url")],
+        "participant_count": len(room["participants"]),
+        "strongest_twin": strongest_twin,
+        "funniest_mismatch": funniest,
+        "chaos_contrast": chaos_contrast,
+        "pairs": pairs,
     }
 
 

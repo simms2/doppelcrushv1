@@ -12,6 +12,8 @@ import Messages from "@/pages/Messages";
 import HowItWorks from "@/pages/HowItWorks";
 import Safety from "@/pages/Safety";
 import FAQ from "@/pages/FAQ";
+import Invite from "@/pages/Invite";
+import Compare from "@/pages/Compare";
 
 import "@/App.css";
 
@@ -41,6 +43,18 @@ export default function App() {
           <Route
             path="/match/:matchId"
             element={<ProtectedRoute requireOnboarding><MatchReveal /></ProtectedRoute>}
+          />
+          <Route
+            path="/invite"
+            element={<ProtectedRoute><Invite /></ProtectedRoute>}
+          />
+          <Route
+            path="/compare"
+            element={<ProtectedRoute requireOnboarding><Compare /></ProtectedRoute>}
+          />
+          <Route
+            path="/compare/:roomId"
+            element={<ProtectedRoute requireOnboarding><Compare /></ProtectedRoute>}
           />
         </Routes>
         <Toaster />

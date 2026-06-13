@@ -25,11 +25,14 @@ export default function Home() {
         {/* HERO */}
         <section className="relative crush-frame mt-4 p-6 sm:p-10 lg:p-12 overflow-hidden">
           {/* Decorative stickers floating */}
-          <Sticker kind="star" size={72} className="absolute top-8 left-6 -rotate-12 hidden md:inline-flex animate-floaty" />
-          <Sticker kind="bolt" size={56} className="absolute top-20 left-2 rotate-12 hidden lg:inline-flex animate-wiggle" color="#ff2d8a" />
-          <Sticker kind="bolt" size={52} className="absolute bottom-24 left-32 -rotate-6 hidden lg:inline-flex animate-floaty" color="#ff7a3d" />
-          <Scribble className="absolute top-6 right-1/3 w-32 hidden lg:block animate-wiggle" color="#ff5fa3" />
-          <Sticker kind="flame" size={64} className="absolute bottom-6 right-8 rotate-6 hidden md:inline-flex animate-floaty" />
+          <Sticker kind="star" size={84} className="absolute top-6 left-4 -rotate-12 hidden md:inline-flex animate-floaty" />
+          <Sticker kind="bolt" size={64} className="absolute top-32 left-1 rotate-12 hidden lg:inline-flex animate-wiggle" color="#ff2d8a" />
+          <Sticker kind="bolt" size={58} className="absolute bottom-44 left-72 -rotate-6 hidden lg:inline-flex animate-floaty" color="#ff7a3d" />
+          <Sticker kind="spark" size={48} className="absolute top-24 right-1/3 rotate-12 hidden lg:inline-flex animate-floaty" />
+          <Scribble className="absolute top-4 right-1/4 w-40 hidden lg:block animate-wiggle" color="#ff5fa3" />
+          <Scribble className="absolute bottom-12 left-1/4 w-32 hidden lg:block -rotate-12" color="#c8b4ff" />
+          <Sticker kind="flame" size={88} className="absolute bottom-6 right-8 rotate-6 hidden md:inline-flex animate-floaty" />
+          <Sticker kind="star" size={56} className="absolute bottom-24 right-1/3 -rotate-6 hidden lg:inline-flex animate-wiggle" />
 
           <div className="grid lg:grid-cols-12 gap-8 lg:gap-10 items-start">
             {/* LEFT: copy + CTAs */}
@@ -45,7 +48,7 @@ export default function Home() {
               </h1>
 
               {/* Floating kawaii heart next to title */}
-              <div className="absolute right-2 top-12 w-28 sm:w-32 lg:w-40 hidden md:block animate-floaty">
+              <div className="absolute right-0 top-8 w-36 sm:w-44 lg:w-56 hidden md:block animate-floaty">
                 <KawaiiHeart />
               </div>
 
@@ -147,6 +150,24 @@ export default function Home() {
             <Sticker kind="bolt" size={96} className="absolute bottom-4 right-6 rotate-12" color="#ff7a3d" />
             <Sticker kind="flame" size={64} className="absolute top-6 right-10 -rotate-12" />
           </div>
+        </section>
+
+        {/* Viral growth band */}
+        <section className="mt-6 grid md:grid-cols-2 gap-6">
+          <Link to={user ? "/invite" : "/auth"} className="crush-frame p-6 sm:p-8 relative overflow-hidden hover:scale-[1.01] transition-transform bg-gradient-to-br from-pink-50 via-white to-orange-50" data-testid="home-invite-card">
+            <Sticker kind="heart" size={64} className="absolute top-4 right-4 rotate-12" />
+            <div className="text-xs font-display font-bold uppercase tracking-widest text-pink-600">Invite friends</div>
+            <h3 className="font-display text-3xl sm:text-4xl font-bold text-slate-900 mt-2">Unlock chaos boosts.</h3>
+            <p className="font-body text-slate-600 mt-2 max-w-md">Every friend who joins via your link gets you a bonus match + a Chaos boost.</p>
+            <div className="mt-4 inline-flex items-center gap-2 text-pink-600 font-display font-bold">Get my code →</div>
+          </Link>
+          <Link to={user ? "/compare" : "/auth"} className="crush-frame p-6 sm:p-8 relative overflow-hidden hover:scale-[1.01] transition-transform bg-gradient-to-br from-purple-50 via-white to-pink-50" data-testid="home-compare-card">
+            <Sticker kind="bolt" size={64} className="absolute top-4 right-4 rotate-12" color="#8a5cf6" />
+            <div className="text-xs font-display font-bold uppercase tracking-widest text-purple-700">Group challenge</div>
+            <h3 className="font-display text-3xl sm:text-4xl font-bold text-slate-900 mt-2">Compare with friends.</h3>
+            <p className="font-body text-slate-600 mt-2 max-w-md">Who has the strongest Doppel? Who gets the wildest Chaos? Settle it in the group chat.</p>
+            <div className="mt-4 inline-flex items-center gap-2 text-purple-700 font-display font-bold">Start a room →</div>
+          </Link>
         </section>
 
         {/* Bottom band */}
