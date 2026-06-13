@@ -58,7 +58,7 @@ async function drawCard({ format, user, match, score, mode }) {
   ctx.fillText("DoppelCrush", W / 2, 130);
   ctx.font = "500 30px Quicksand, system-ui";
   ctx.fillStyle = "#475569";
-  ctx.fillText("Because clearly you have good taste.", W / 2, 178);
+  ctx.fillText("Find your Doppel. Flirt with chaos.", W / 2, 178);
 
   // photos side by side
   const photoW = 380;

@@ -65,7 +65,7 @@ export default function Discover() {
     try {
       const { data } = await api.post("/swipe", { target_id: top.id, direction });
       if (data.match) {
-        setLastMatch(top);
+        setLastMatch({ ...top, match_id: data.match_id });
       }
     } catch (err) {
       setError(formatApiError(err));
@@ -211,7 +211,7 @@ export default function Discover() {
               <p className="font-display text-2xl mt-4 text-slate-900">You and {lastMatch.name} are into it.</p>
               <div className="mt-6 flex flex-col gap-2">
                 <button
-                  onClick={() => { setLastMatch(null); navigate("/messages"); }}
+                  onClick={() => { setLastMatch(null); navigate(`/chat/${lastMatch.match_id}`); }}
                   className="crush-cta rounded-full font-display font-bold py-3"
                   data-testid="match-message-btn"
                 >Message them</button>

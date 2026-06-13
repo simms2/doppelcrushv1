@@ -38,7 +38,7 @@ export default function Messages() {
                   <li
                     key={m.id}
                     className="flex items-center gap-4 p-3 rounded-2xl bg-white border-2 border-slate-100 hover:border-pink-200 cursor-pointer"
-                    onClick={() => navigate(`/match/${m.profile.id}`)}
+                    onClick={() => navigate(`/chat/${m.id}`)}
                     data-testid={`match-row-${m.profile.id}`}
                   >
                     <img src={m.profile.photo_url} alt={m.profile.name} className="w-16 h-16 rounded-2xl object-cover" />
@@ -46,7 +46,7 @@ export default function Messages() {
                       <div className="font-display text-xl font-bold text-slate-900">{m.profile.name}, {m.profile.age}</div>
                       <div className="text-sm text-slate-500 font-body truncate">{m.profile.bio || "Say hi 👋"}</div>
                     </div>
-                    <span className="text-xs text-pink-600 font-bold">View →</span>
+                    <span className="text-xs text-pink-600 font-bold">Chat →</span>
                   </li>
                 ))}
               </ul>

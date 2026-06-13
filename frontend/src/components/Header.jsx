@@ -10,7 +10,7 @@ export const LogoBadge = () => (
     </div>
     <div className="leading-tight">
       <div className="font-display text-xl sm:text-2xl font-bold tracking-tight text-slate-900">DoppelCrush</div>
-      <div className="text-xs sm:text-sm text-slate-500 font-body">Because clearly you have good taste.</div>
+      <div className="text-xs sm:text-sm text-slate-500 font-body">Find your Doppel. Flirt with chaos.</div>
     </div>
   </div>
 );

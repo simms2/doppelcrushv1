@@ -1,0 +1,40 @@
+{
+  "summary": "Iteration 3 backend testing: selfie upload (object storage) + match chat + swipe match_id. 18/18 tests passing (100%). Created /app/backend/tests/test_iteration3.py with 6 classes covering: auth-gating, MIME validation, 8MB cap, real object-storage upload+download round-trip, match_id presence on like-to-seed, foreign-user 404 isolation, two-message guarantee from seed auto-reply, chronological ordering, since-filter, and inbound read-flag toggling. JPEG bytes downloaded back equal bytes uploaded -- real Emergent object storage path is fully working.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "GET /api/matches/{match_id}/messages?since=...",
+        "issue": "since query param is compared as raw STRING against stored ISO created_at. If a client sends the timezone suffix '+00:00' un-encoded (i.e. literal '+' in querystring), FastAPI/Starlette decodes '+' as space, producing a value lexically < the stored string, so the strict $gt filter returns messages it should have excluded. Backend should parse `since` as datetime (Pydantic / fastapi.Query type) and either compare as datetime or accept urlencoded variants. Test was updated to use params={'since': ...} so '+' is %2B-encoded, but real frontend clients can hit this if they build the URL with f-strings."
+      },
+      {
+        "endpoint": "GET /api/files/{path:path}",
+        "issue": "Endpoint is public (no auth) by design — anyone with a path can fetch the bytes. That matches the spec ('<img src> direct'), but consider signed URLs / per-user access checks for private selfies in future."
+      }
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration3.py",
+    "/app/test_reports/pytest/iteration3_results.xml"
+  ],
+  "action_items": [
+    "Optional: switch `since` to `Optional[datetime] = Query(None)` so FastAPI parses ISO safely and the strict-gt comparison is timezone-aware. Low priority — frontend can avoid by URL-encoding."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 750 lines and mixes auth/discover/upload/chat — recommend splitting into routers/{auth,discover,chat,upload}.py after this iteration.",
+    "send_message stores created_at as ISO string; messages collection lacks a (match_id, created_at) compound index in ensure_indexes() — already partially indexed but worth verifying performance once message volume grows.",
+    "storage.put_object refresh-key path: globals()['_storage_key']=None then re-init — fine but consider a lock to avoid two concurrent requests both invalidating the key.",
+    "list_messages marks inbound as read AFTER reading; the returned message objects still show their pre-update read value. Frontend should treat the list call as side-effecting (current behaviour OK, just document)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration3.py (new, 18 tests)"
+  ],
+  "success_rate": {"backend": "100% (18/18)", "frontend": "not tested (per request)"},
+  "test_credentials": "/app/memory/test_credentials.md not present — iteration creates ad-hoc users iter3a+<ts>@example.com / crushme123 etc.",
+  "seed_data_creation": "Module-scoped fixtures create user_a (iter3a), user_b (iter3b). Match created via swipe-like on a seed profile picked from /discover. No global seed mutated.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 3 endpoints all green. The only latent concern is `since=` URL-decoding: frontend MUST send the param via a proper query-param builder (e.g. URLSearchParams) so '+' is %2B-encoded; otherwise the strict $gt filter returns stale messages. Object storage upload+download verified end-to-end (real Emergent storage, not mocked). Iterations 1 + 2 not re-run per instructions.",
+  "rca of the issue": "During first run, test_since_filter_returns_only_newer failed because the test embedded the ISO timestamp directly into f-string URL (f'?since={cutoff}'). The '+' in '+00:00' is interpreted as space by the URL-decoder server-side, producing a lexically-smaller 'since' than what's stored, so $gt incorrectly matched the auto-reply. Reproduction: GET /api/matches/{m}/messages?since=2026-01-01T00:00:00+00:00 returns msgs at that exact instant. Mitigation in test: switched to params={'since': cutoff} so requests-lib percent-encodes '+'. Backend mitigation (recommended): declare `since: Optional[datetime] = Query(None)` so FastAPI parses ISO strictly and compares as datetime objects."
+}

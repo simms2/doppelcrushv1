@@ -9,6 +9,7 @@ import Onboarding from "@/pages/Onboarding";
 import Discover from "@/pages/Discover";
 import MatchReveal from "@/pages/MatchReveal";
 import Messages from "@/pages/Messages";
+import Chat from "@/pages/Chat";
 import HowItWorks from "@/pages/HowItWorks";
 import Safety from "@/pages/Safety";
 import FAQ from "@/pages/FAQ";
@@ -43,6 +44,10 @@ export default function App() {
           <Route
             path="/match/:matchId"
             element={<ProtectedRoute requireOnboarding><MatchReveal /></ProtectedRoute>}
+          />
+          <Route
+            path="/chat/:matchId"
+            element={<ProtectedRoute requireOnboarding><Chat /></ProtectedRoute>}
           />
           <Route
             path="/invite"

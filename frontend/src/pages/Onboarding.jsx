@@ -51,17 +51,21 @@ export default function Onboarding() {
         return;
       }
       setEmbedding(result.embedding);
-      // store data URL for photo (compressed)
-      const reader = new FileReader();
-      reader.onload = () => {
-        setPhotoData(reader.result);
-        setPreviewUrl(reader.result);
-        setFaceStatus("ok");
-      };
-      reader.readAsDataURL(file);
+      // Upload to object storage instead of stashing a base64 data URL
+      const form = new FormData();
+      form.append("file", file, file.name || "selfie.jpg");
+      const { data } = await api.post("/upload/selfie", form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      const absolute = data.url.startsWith("http")
+        ? data.url
+        : `${process.env.REACT_APP_BACKEND_URL}${data.url}`;
+      setPhotoData(absolute);
+      setPreviewUrl(absolute);
+      setFaceStatus("ok");
     } catch (e) {
       setFaceStatus("no_face");
-      setError("Couldn't process that photo. Pick another.");
+      setError("Couldn't upload that photo. Pick another.");
     }
   };
 
