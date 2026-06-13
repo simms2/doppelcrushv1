@@ -559,12 +559,12 @@ async def patch_me(data: ProfilePatch, user: dict = Depends(get_current_user)):
         return user
     await db.users.update_one({"id": user["id"]}, {"$set": updates})
     # re-upsert the embedding if it was changed
-    if "embedding" in updates and updates["embedding"]:
+    if "embedding" in updates and isinstance(updates["embedding"], list) and len(updates["embedding"]) >= 64:
         await vector_store.upsert(
             user["id"],
             updates["embedding"],
             {
-                "model_version": MODEL_FACEAPI,
+                "model_version": updates.get("embedding_model") or user.get("embedding_model") or MODEL_FACEAPI,
                 "quality_score": updates.get("embedding_quality", user.get("embedding_quality", 0.6)),
                 "face_detected": True,
             },
@@ -579,10 +579,14 @@ async def patch_me(data: ProfilePatch, user: dict = Depends(get_current_user)):
 async def delete_me(user: dict = Depends(get_current_user)):
     """Privacy: remove user, their face embedding, swipes, messages, files."""
     uid = user["id"]
+    # collect their match ids first so we can wipe orphaned messages too
+    match_ids = [m["id"] async for m in db.matches.find({"users": uid}, {"id": 1})]
     await vector_store.delete(uid)
     await db.users.delete_one({"id": uid})
     await db.swipes.delete_many({"$or": [{"user_id": uid}, {"target_id": uid}]})
     await db.matches.delete_many({"users": uid})
+    if match_ids:
+        await db.messages.delete_many({"match_id": {"$in": match_ids}})
     await db.messages.delete_many({"sender_id": uid})
     await db.files.update_many({"user_id": uid}, {"$set": {"is_deleted": True}})
     await db.share_events.delete_many({"user_id": uid})
