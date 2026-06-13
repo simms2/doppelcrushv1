@@ -500,7 +500,8 @@ async def get_compare(room_id: str, user: dict = Depends(get_current_user)):
     pairs.sort(key=lambda p: p["score"], reverse=True)
     strongest_twin = pairs[0] if pairs else None
     chaos_contrast = pairs[-1] if len(pairs) > 1 else None
-    funniest = pairs[-1] if len(pairs) >= 1 else None
+    # funniest = the pair closest to the median score (most "average / unexpected")
+    funniest = pairs[len(pairs) // 2] if len(pairs) >= 2 else None
     return {
         "id": room["id"],
         "title": room["title"],
