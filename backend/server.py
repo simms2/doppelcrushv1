@@ -527,13 +527,13 @@ async def get_match(match_id: str, user: dict = Depends(get_current_user)):
 @api.get("/matches/{match_id}/messages")
 async def list_messages(
     match_id: str,
-    since: Optional[str] = Query(None),
+    since: Optional[datetime] = Query(None),
     user: dict = Depends(get_current_user),
 ):
     await _match_or_403(match_id, user["id"])
     query: dict = {"match_id": match_id}
     if since:
-        query["created_at"] = {"$gt": since}
+        query["created_at"] = {"$gt": since.isoformat()}
     msgs = (
         await db.messages.find(query, {"_id": 0})
         .sort("created_at", 1)
