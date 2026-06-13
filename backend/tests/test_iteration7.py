@@ -277,17 +277,22 @@ class TestOgTwinImage:
         w, h = _png_dimensions(r.content)
         assert (w, h) == (1200, 630), f"Expected 1200x630, got {w}x{h}"
 
-    def test_returns_404_for_unknown(self):
+    def test_returns_fallback_png_for_unknown(self):
+        """Unknown users get a generic brand PNG (200) so unfurlers don't cache 404."""
         r = requests.get(f"{API}/og/twin/does-not-exist-{uuid.uuid4()}.png", timeout=20)
-        assert r.status_code == 404
+        assert r.status_code == 200
+        assert r.headers.get("content-type") == "image/png"
+        w, h = _png_dimensions(r.content)
+        assert (w, h) == (1200, 630)
 
-    def test_returns_404_for_non_onboarded(self):
+    def test_returns_fallback_png_for_non_onboarded(self):
         em = _email("nonob_og")
         s = _signup({"email": em, "password": "passw0rd!", "name": "NotOB"})
         assert s.status_code == 200
         uid = s.json()["user"]["id"]
         r = requests.get(f"{API}/og/twin/{uid}.png", timeout=20)
-        assert r.status_code == 404
+        assert r.status_code == 200
+        assert r.headers.get("content-type") == "image/png"
 
 
 # ════════════════════════════════════════════════════════════════════════

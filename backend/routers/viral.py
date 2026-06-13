@@ -1,13 +1,14 @@
 """Viral growth: shares, referrals, twin teaser, compare rooms."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import uuid
 from html import escape as h
 from typing import Optional
 
-import requests
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 
@@ -92,16 +93,15 @@ async def _fetch_user_photo_bytes(photo_url: Optional[str]) -> Optional[bytes]:
         return None
     # If the photo is stored in Emergent object storage we have a relative
     # /api/files/<path> URL. Read directly via the storage helper to avoid a
-    # network roundtrip.
+    # network roundtrip (run in a thread so we don't block the event loop).
     if "/api/files/" in photo_url:
         try:
             storage_path = photo_url.split("/api/files/", 1)[1]
-            data, _ = get_object(storage_path)
+            data, _ = await asyncio.to_thread(get_object, storage_path)
             return data
         except Exception as e:  # noqa: BLE001
             logger.info("OG photo storage fetch failed: %s", e)
             return None
-    # Otherwise try HTTP (data: URLs, third-party CDNs).
     if photo_url.startswith("data:"):
         try:
             import base64
@@ -110,9 +110,10 @@ async def _fetch_user_photo_bytes(photo_url: Optional[str]) -> Optional[bytes]:
             return None
     if photo_url.startswith(("http://", "https://")):
         try:
-            r = requests.get(photo_url, timeout=8)
-            r.raise_for_status()
-            return r.content
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                r = await client.get(photo_url)
+                r.raise_for_status()
+                return r.content
         except Exception as e:  # noqa: BLE001
             logger.info("OG photo http fetch failed: %s", e)
             return None
@@ -121,7 +122,11 @@ async def _fetch_user_photo_bytes(photo_url: Optional[str]) -> Optional[bytes]:
 
 @router.get("/og/twin/{user_id}.png")
 async def og_twin_image(user_id: str, request: Request):
-    """Dynamic 1200x630 PNG used as the og:image for `/your-twin/:user_id`."""
+    """Dynamic 1200x630 PNG used as the og:image for `/your-twin/:user_id`.
+
+    Always returns a 200 PNG (falls back to a generic brand card when the
+    user can't be loaded) so rich-link unfurlers don't cache 404s.
+    """
     if not rate_limit(f"ogimg:{client_ip(request)}", max_calls=60, window_sec=60.0):
         raise HTTPException(status_code=429, detail="Too many requests")
     u = await db.users.find_one(
@@ -129,14 +134,20 @@ async def og_twin_image(user_id: str, request: Request):
         {"_id": 0, "password_hash": 0, "embedding": 0, "email": 0},
     )
     if not u:
-        raise HTTPException(status_code=404, detail="Not found")
-    photo_bytes = await _fetch_user_photo_bytes(u.get("photo_url"))
-    png = render_twin_og(
-        name=u.get("name") or "your twin",
-        photo_bytes=photo_bytes,
-        referral_code=u.get("referral_code") or "",
-        mode=u.get("mode", "doppel"),
-    )
+        png = render_twin_og(
+            name="DoppelCrush",
+            photo_bytes=None,
+            referral_code="",
+            mode="doppel",
+        )
+    else:
+        photo_bytes = await _fetch_user_photo_bytes(u.get("photo_url"))
+        png = render_twin_og(
+            name=u.get("name") or "your twin",
+            photo_bytes=photo_bytes,
+            referral_code=u.get("referral_code") or "",
+            mode=u.get("mode", "doppel"),
+        )
     return Response(
         content=png,
         media_type="image/png",

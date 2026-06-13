@@ -25,13 +25,20 @@ Brand: glossy, playful, social, viral, confident, safe. Never creepy.
 - ✅ Match reveal page with HTML5-canvas branded share card (square + story formats)
 - ✅ Static pages: How it works / Safety / FAQ
 - ✅ Viral growth system
-  - `/invite` page — code, copy, WhatsApp / X / Instagram / Threads / native share, fun PNG card download
+  - `/invite` page — code, copy, WhatsApp / X / Instagram / Threads / native share, fun PNG card download (Post 1:1 + Story 9:16 formats toggle)
   - `/compare` group challenge rooms — strongest twin pair, chaos contrast, funniest mismatch
   - `/api/me/stats`, `/api/compare`, `/api/compare/{id}/join`, `/api/compare/{id}`
   - Share kinds: reveal_card, invite, invite_card, instagram, threads, whatsapp, x, match_card, story, square (+1 bonus per share)
-- ✅ Bold meme-y canvas-rendered share card (1080x1080 PNG) auto-downloaded for Instagram, copied caption flow
+- ✅ Bold meme-y canvas-rendered share card with two formats (1080x1080 + 1080x1920 story) auto-downloaded for Instagram, copied caption flow
+- ✅ Dynamic Open Graph image generation
+  - `GET /api/og/twin/{user_id}.png` — server-side rendered 1200x630 PNG (Pillow) with selfie circle, headline, code badge — returns 200 fallback PNG even for unknown IDs so unfurlers don't cache 404s
+  - `GET /api/share/twin-page/{user_id}` — crawler-friendly HTML with og:title/description/image/url + twitter:card meta, honours x-forwarded-proto/host so absolute URLs are always public https
+  - Profile page now shares the twin-page URL so iMessage/WhatsApp/Slack/Twitter unfurl with a rich preview
+- ✅ Backend refactor: `server.py` reduced from 1100 → ~230 lines, split into `routers/{auth,match,chat,files,viral}.py` + `deps.py` + `models.py`
+- ✅ Migrated to FastAPI `@asynccontextmanager lifespan` (no more deprecated on_event)
+- ✅ In-process sliding-window rate limiter on public twin endpoints (30/min on teaser, 60/min on og + share-page)
 - ✅ Header logo now routes to homepage (/) instead of /discover
-- ✅ Backend tests: 32 passing (iteration 1: 18 + iteration 2: 14)
+- ✅ Backend tests: 118 passing (iterations 1–7), 1 skipped, 0 failed
 
 ## Backlog (P0/P1)
 - P0: Real chat MVP between matched users (Messages page is a stub list)
