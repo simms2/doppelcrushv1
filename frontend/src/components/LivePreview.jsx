@@ -86,12 +86,10 @@ export default function LivePreview() {
         </button>
       </div>
 
-      {/* corner stickers */}
-      <div className="absolute -top-6 -right-4 rotate-12 hidden sm:block">
-        <Sticker kind="heart" size={64} />
-      </div>
-      <div className="absolute -bottom-6 -left-6 -rotate-12 hidden sm:block">
-        <Sticker kind="bolt" size={56} color="#ff7a3d" />
+      {/* corner stickers — pointer-events-none so they don't intercept clicks */}
+      <div className="pointer-events-none" aria-hidden="true">
+        <Sticker kind="heart" size={48} className="absolute -top-4 -right-2 rotate-12 hidden lg:inline-flex" />
+        <Sticker kind="bolt" size={44} className="absolute -bottom-4 -left-2 -rotate-12 hidden lg:inline-flex" color="#ff7a3d" />
       </div>
     </div>
   );

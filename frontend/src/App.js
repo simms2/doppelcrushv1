@@ -15,6 +15,7 @@ import Safety from "@/pages/Safety";
 import FAQ from "@/pages/FAQ";
 import Invite from "@/pages/Invite";
 import Compare from "@/pages/Compare";
+import Profile from "@/pages/Profile";
 
 import "@/App.css";
 
@@ -60,6 +61,10 @@ export default function App() {
           <Route
             path="/compare/:roomId"
             element={<ProtectedRoute requireOnboarding><Compare /></ProtectedRoute>}
+          />
+          <Route
+            path="/profile"
+            element={<ProtectedRoute requireOnboarding><Profile /></ProtectedRoute>}
           />
         </Routes>
         <Toaster />

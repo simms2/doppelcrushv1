@@ -66,6 +66,10 @@ export default function Discover() {
       const { data } = await api.post("/swipe", { target_id: top.id, direction });
       if (data.match) {
         setLastMatch({ ...top, match_id: data.match_id });
+        try {
+          const ores = await api.get(`/matches/${data.match_id}/openers`);
+          setOpeners(ores.data.openers || []);
+        } catch { setOpeners([]); }
       }
     } catch (err) {
       setError(formatApiError(err));
@@ -209,6 +213,33 @@ export default function Discover() {
                 <img src={lastMatch.photo_url} alt={lastMatch.name} className="w-24 h-24 rounded-full object-cover border-4 border-orange-300" />
               </div>
               <p className="font-display text-2xl mt-4 text-slate-900">You and {lastMatch.name} are into it.</p>
+
+              {/* After-match starter openers */}
+              {openers.length > 0 ? (
+                <div className="mt-5 text-left" data-testid="match-openers">
+                  <div className="text-xs font-display font-bold uppercase tracking-widest text-slate-500 mb-2">Send a starter line</div>
+                  <div className="space-y-2">
+                    {openers.map((line, i) => (
+                      <button
+                        key={i}
+                        disabled={sendingOpener}
+                        onClick={async () => {
+                          setSendingOpener(true);
+                          try {
+                            await api.post(`/matches/${lastMatch.match_id}/messages`, { body: line });
+                            navigate(`/chat/${lastMatch.match_id}`);
+                          } finally { setSendingOpener(false); }
+                        }}
+                        className="w-full text-left p-3 rounded-2xl bg-pink-50 border-2 border-pink-100 hover:border-pink-300 hover:bg-pink-100 transition-colors font-body text-sm text-slate-800 disabled:opacity-60"
+                        data-testid={`opener-${i}`}
+                      >
+                        {line}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
               <div className="mt-6 flex flex-col gap-2">
                 <button
                   onClick={() => { setLastMatch(null); navigate(`/chat/${lastMatch.match_id}`); }}

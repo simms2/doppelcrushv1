@@ -16,13 +16,14 @@ from typing import List, Literal, Optional
 
 import bcrypt
 import jwt
-from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile, status
+from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, EmailStr, Field
 
 from seed_data import get_seed_profiles_with_embeddings
 from storage import APP_NAME, get_object, init_storage, put_object
+from moderation import check_selfie
 
 # ---------------------------------------------------------------------------
 # Config & DB
@@ -431,6 +432,108 @@ async def log_share(data: ShareEventIn, user: dict = Depends(get_current_user)):
     return {"ok": True}
 
 
+@api.get("/matches/{match_id}/openers")
+async def get_openers(match_id: str, user: dict = Depends(get_current_user)):
+    """Return 3 mode-appropriate one-tap starter messages for an existing match."""
+    match = await _match_or_403(match_id, user["id"])
+    other_id = next((u for u in match["users"] if u != user["id"]), None)
+    other = await db.users.find_one({"id": other_id}, {"_id": 0}) if other_id else None
+    name = other.get("name") if other else "you"
+    mode = user.get("mode", "doppel")
+    doppel_openers = [
+        f"Twin energy 🪞 — were we separated at birth, {name}?",
+        f"ok {name}, your face card is unfair. coffee?",
+        "we look way too alike. mildly suspicious.",
+        f"{name} — same vibe, same brows, what's the deal?",
+    ]
+    chaos_openers = [
+        "plot twist energy. I'm into it.",
+        f"total opposite of my usual type. risky move, {name}?",
+        "we make zero sense. let's collide ⚡",
+        f"chaos draft pick, {name}. don't disappoint.",
+    ]
+    pool = doppel_openers if mode == "doppel" else chaos_openers
+    return {"openers": pool[:3], "match_id": match_id, "mode": mode}
+
+
+@api.post("/matches/{match_id}/typing")
+async def post_typing(match_id: str, user: dict = Depends(get_current_user)):
+    await _match_or_403(match_id, user["id"])
+    await db.typing.update_one(
+        {"match_id": match_id, "user_id": user["id"]},
+        {"$set": {"updated_at": now_iso()}},
+        upsert=True,
+    )
+    return {"ok": True}
+
+
+@api.get("/matches/{match_id}/state")
+async def match_state(match_id: str, user: dict = Depends(get_current_user)):
+    """Polled by chat clients — returns whether the other user is typing + unread count."""
+    match = await _match_or_403(match_id, user["id"])
+    other_id = next((u for u in match["users"] if u != user["id"]), None)
+    typing = False
+    if other_id:
+        t = await db.typing.find_one({"match_id": match_id, "user_id": other_id})
+        if t:
+            from datetime import datetime as _dt
+            updated = _dt.fromisoformat(t["updated_at"])
+            if (datetime.now(timezone.utc) - updated).total_seconds() < 5:
+                typing = True
+    last_read_other = await db.messages.find_one(
+        {"match_id": match_id, "sender_id": user["id"], "read": True},
+        sort=[("created_at", -1)],
+        projection={"_id": 0, "id": 1, "created_at": 1},
+    )
+    unread = await db.messages.count_documents(
+        {"match_id": match_id, "sender_id": {"$ne": user["id"]}, "read": False}
+    )
+    return {
+        "typing": typing,
+        "last_read_other_message_id": last_read_other["id"] if last_read_other else None,
+        "unread": unread,
+    }
+
+
+@api.get("/me/unread")
+async def my_unread(user: dict = Depends(get_current_user)):
+    """Total unread across all my matches — used for the nav badge."""
+    pipeline = [
+        {"$match": {"sender_id": {"$ne": user["id"]}, "read": False}},
+        {"$lookup": {"from": "matches", "localField": "match_id", "foreignField": "id", "as": "m"}},
+        {"$match": {"m.users": user["id"]}},
+        {"$count": "n"},
+    ]
+    result = await db.messages.aggregate(pipeline).to_list(1)
+    n = result[0]["n"] if result else 0
+    return {"unread": n}
+
+
+# ---------------------------------------------------------------------------
+# Routes - profile edit
+# ---------------------------------------------------------------------------
+class ProfilePatch(BaseModel):
+    name: Optional[str] = None
+    bio: Optional[str] = None
+    location: Optional[str] = None
+    mode: Optional[Literal["doppel", "chaos"]] = None
+    looking_for: Optional[Literal["women", "men", "everyone"]] = None
+    photo_url: Optional[str] = None
+    embedding: Optional[List[float]] = None
+
+
+@api.patch("/me")
+async def patch_me(data: ProfilePatch, user: dict = Depends(get_current_user)):
+    updates = {k: v for k, v in data.model_dump(exclude_none=True).items()}
+    if not updates:
+        return user
+    await db.users.update_one({"id": user["id"]}, {"$set": updates})
+    refreshed = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+    refreshed.pop("password_hash", None)
+    refreshed.pop("embedding", None)
+    return refreshed
+
+
 @api.get("/referral/{code}")
 async def referral_info(code: str):
     user = await db.users.find_one({"referral_code": code}, {"_id": 0})
@@ -457,6 +560,13 @@ async def upload_selfie(
     data = await file.read()
     if len(data) > 8 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Selfie too large (max 8MB)")
+    # Moderation pass (heuristic stub — swap for real NSFW model in prod)
+    verdict = check_selfie(data)
+    if not verdict["safe"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Selfie flagged by moderation ({verdict.get('reason','flagged')}). Please upload a face-only photo.",
+        )
     path = f"{APP_NAME}/selfies/{user['id']}/{uuid.uuid4()}.{ext}"
     content_type = file.content_type or MIME_BY_EXT[ext]
     try:
@@ -740,6 +850,75 @@ async def on_stop():
 
 
 app.include_router(api)
+
+
+# ---------------------------------------------------------------------------
+# WebSocket — optional real-time upgrade for chat (polling remains fallback)
+# ---------------------------------------------------------------------------
+_ws_rooms: dict[str, set[WebSocket]] = {}
+
+
+async def _ws_authenticate(token: str) -> Optional[dict]:
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
+    except jwt.PyJWTError:
+        return None
+    return await db.users.find_one({"id": payload["sub"]}, {"_id": 0})
+
+
+@app.websocket("/api/ws/chat/{match_id}")
+async def ws_chat(websocket: WebSocket, match_id: str, token: str = Query("")):
+    user = await _ws_authenticate(token)
+    if not user:
+        await websocket.close(code=4401)
+        return
+    match = await db.matches.find_one({"id": match_id, "users": user["id"]}, {"_id": 0})
+    if not match:
+        await websocket.close(code=4404)
+        return
+    await websocket.accept()
+    room = _ws_rooms.setdefault(match_id, set())
+    room.add(websocket)
+    try:
+        while True:
+            payload = await websocket.receive_json()
+            t = payload.get("type")
+            if t == "message":
+                body = (payload.get("body") or "").strip()
+                if not body:
+                    continue
+                msg = {
+                    "id": str(uuid.uuid4()),
+                    "match_id": match_id,
+                    "sender_id": user["id"],
+                    "body": body[:1000],
+                    "created_at": now_iso(),
+                    "read": False,
+                }
+                await db.messages.insert_one(msg)
+                for peer in list(room):
+                    try:
+                        await peer.send_json({"type": "message", "message": {**msg, "_id": None}})
+                    except Exception:
+                        room.discard(peer)
+            elif t == "typing":
+                for peer in list(room):
+                    if peer is websocket:
+                        continue
+                    try:
+                        await peer.send_json({"type": "typing", "user_id": user["id"]})
+                    except Exception:
+                        room.discard(peer)
+            elif t == "ping":
+                await websocket.send_json({"type": "pong"})
+    except WebSocketDisconnect:
+        pass
+    finally:
+        room.discard(websocket)
+        if not room:
+            _ws_rooms.pop(match_id, None)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),

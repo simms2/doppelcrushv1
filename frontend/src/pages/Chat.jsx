@@ -131,10 +131,12 @@ export default function Chat() {
                 </div>
               </div>
             ) : (
-              messages.map((m) => {
+              messages.map((m, idx) => {
                 const mine = m.sender_id === user.id;
+                const isLastMine = mine && idx === messages.length - 1;
+                const isRead = state.last_read_other_message_id === m.id;
                 return (
-                  <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`} data-testid={mine ? "msg-mine" : "msg-theirs"}>
+                  <div key={m.id} className={`flex flex-col ${mine ? "items-end" : "items-start"}`} data-testid={mine ? "msg-mine" : "msg-theirs"}>
                     <div
                       className={`max-w-[78%] px-4 py-2.5 rounded-3xl font-body text-sm leading-relaxed ${
                         mine
@@ -144,10 +146,24 @@ export default function Chat() {
                     >
                       {m.body}
                     </div>
+                    {isLastMine ? (
+                      <div className="text-[10px] font-body text-slate-400 mt-1 mr-1" data-testid="read-receipt">
+                        {m._pending ? "Sending…" : isRead ? "Read ✓✓" : "Sent ✓"}
+                      </div>
+                    ) : null}
                   </div>
                 );
               })
             )}
+            {state.typing ? (
+              <div className="flex items-center gap-2" data-testid="typing-indicator">
+                <div className="bg-pink-50 text-slate-700 border-2 border-pink-100 rounded-3xl rounded-bl-md px-4 py-2.5 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-pink-400 animate-bounce" style={{ animationDelay: "0ms" }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-pink-400 animate-bounce" style={{ animationDelay: "120ms" }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-pink-400 animate-bounce" style={{ animationDelay: "240ms" }} />
+                </div>
+              </div>
+            ) : null}
           </div>
 
           {/* Input */}
@@ -158,7 +174,7 @@ export default function Chat() {
           >
             <input
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => onType(e.target.value)}
               maxLength={1000}
               placeholder="Type something cute…"
               className="flex-1 rounded-full border-2 border-slate-200 px-4 py-3 font-body bg-white focus:border-pink-400 outline-none"

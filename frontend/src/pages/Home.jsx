@@ -24,17 +24,20 @@ export default function Home() {
 
         {/* HERO */}
         <section className="relative crush-frame mt-4 p-6 sm:p-10 lg:p-12 overflow-hidden">
-          {/* Decorative stickers floating */}
-          <Sticker kind="star" size={84} className="absolute top-6 left-4 -rotate-12 hidden md:inline-flex animate-floaty" />
-          <Sticker kind="bolt" size={64} className="absolute top-32 left-1 rotate-12 hidden lg:inline-flex animate-wiggle" color="#ff2d8a" />
-          <Sticker kind="bolt" size={58} className="absolute bottom-44 left-72 -rotate-6 hidden lg:inline-flex animate-floaty" color="#ff7a3d" />
-          <Sticker kind="spark" size={48} className="absolute top-24 right-1/3 rotate-12 hidden lg:inline-flex animate-floaty" />
-          <Scribble className="absolute top-4 right-1/4 w-40 hidden lg:block animate-wiggle" color="#ff5fa3" />
-          <Scribble className="absolute bottom-12 left-1/4 w-32 hidden lg:block -rotate-12" color="#c8b4ff" />
-          <Sticker kind="flame" size={88} className="absolute bottom-6 right-8 rotate-6 hidden md:inline-flex animate-floaty" />
-          <Sticker kind="star" size={56} className="absolute bottom-24 right-1/3 -rotate-6 hidden lg:inline-flex animate-wiggle" />
+          {/* Decorative stickers — placed in safe gutters, never over text/CTAs */}
+          <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+            {/* top-right corner of hero panel */}
+            <Sticker kind="star" size={56} className="absolute top-4 right-6 -rotate-12 hidden md:inline-flex animate-floaty" />
+            {/* gutter between left column and right column on large screens */}
+            <Sticker kind="bolt" size={56} className="absolute top-1/3 left-[58%] rotate-12 hidden xl:inline-flex animate-wiggle" color="#ff7a3d" />
+            <Scribble className="absolute top-6 left-[55%] w-24 hidden xl:block animate-wiggle" color="#ff5fa3" />
+            {/* bottom-left empty space below the value-prop chips */}
+            <Sticker kind="spark" size={44} className="absolute bottom-6 left-8 -rotate-6 hidden lg:inline-flex animate-floaty" />
+            {/* small wisp on far-right edge between hero and frame */}
+            <Sticker kind="flame" size={56} className="absolute -bottom-2 right-2 rotate-6 hidden md:inline-flex animate-floaty" />
+          </div>
 
-          <div className="grid lg:grid-cols-12 gap-8 lg:gap-10 items-start">
+          <div className="grid lg:grid-cols-12 gap-8 lg:gap-10 items-start relative">
             {/* LEFT: copy + CTAs */}
             <div className="lg:col-span-7 relative">
               <div className="crush-tag-pill mb-5 font-display">
@@ -42,17 +45,16 @@ export default function Home() {
                 Selfie first. Crush later.
               </div>
 
-              <h1 className="font-display text-6xl sm:text-7xl lg:text-[5.5rem] xl:text-[6.5rem] font-bold leading-[0.92] text-slate-900">
-                <span className="crush-sticker-text-dark">Find your</span><br />
+              <h1 className="font-display text-6xl sm:text-7xl lg:text-[5.5rem] xl:text-[6.5rem] font-bold leading-[0.92] text-slate-900 relative z-10">
+                <span className="crush-sticker-text-dark">Find your</span>
+                <span className="inline-block align-middle w-14 sm:w-16 lg:w-20 ml-2 -mt-3 animate-floaty" aria-hidden="true">
+                  <KawaiiHeart />
+                </span>
+                <br />
                 <span className="crush-sticker-text crush-text-grad">DoppelCrush</span>
               </h1>
 
-              {/* Floating kawaii heart next to title */}
-              <div className="absolute right-0 top-8 w-36 sm:w-44 lg:w-56 hidden md:block animate-floaty">
-                <KawaiiHeart />
-              </div>
-
-              <p className="mt-8 text-lg sm:text-xl text-slate-700 max-w-xl font-body leading-relaxed">
+              <p className="mt-8 text-lg sm:text-xl text-slate-700 max-w-xl font-body leading-relaxed relative z-10">
                 Ever wondered why so many couples look alike?
                 <br className="hidden sm:block" />
                 Wonder no more and find your DoppelCrush.
