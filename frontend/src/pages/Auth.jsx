@@ -16,6 +16,8 @@ export default function Auth() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const ref = params.get("ref");
+  const twinId = params.get("twin_id");
+  const source = params.get("source");
 
   const submit = async (e) => {
     e.preventDefault();
@@ -23,7 +25,7 @@ export default function Auth() {
     setBusy(true);
     try {
       if (mode === "signup") {
-        const u = await signup(email, password, name || "Crush", ref);
+        const u = await signup(email, password, name || "Crush", ref, twinId, source);
         navigate(u.onboarding_complete ? "/discover" : "/onboarding");
       } else {
         const u = await login(email, password);

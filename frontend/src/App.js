@@ -16,6 +16,7 @@ import FAQ from "@/pages/FAQ";
 import Invite from "@/pages/Invite";
 import Compare from "@/pages/Compare";
 import Profile from "@/pages/Profile";
+import Twin from "@/pages/Twin";
 
 import "@/App.css";
 
@@ -30,6 +31,7 @@ export default function App() {
           <Route path="/how-it-works" element={<HowItWorks />} />
           <Route path="/safety" element={<Safety />} />
           <Route path="/faq" element={<FAQ />} />
+          <Route path="/your-twin/:userId" element={<Twin />} />
           <Route
             path="/onboarding"
             element={<ProtectedRoute><Onboarding /></ProtectedRoute>}

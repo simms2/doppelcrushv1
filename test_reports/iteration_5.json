@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration 6 backend testing — twin share endpoints, signup twin_id compare-room wiring, PgVectorStore stub, MIN_QUALITY filter push-down, and WebSocket route registration. All 11 tests passed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration6.py",
+    "/app/test_reports/pytest/iteration6_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is ~1100 lines and split-worthy — auth/routes/ws/seed should be modularised (>700 line threshold).",
+    "FastAPI @app.on_event('startup'/'shutdown') is deprecated; migrate to lifespan handlers.",
+    "CORSMiddleware is registered AFTER include_router (line 995 vs 1094). Works because middleware applies to whole app at startup, but is order-confusing; move add_middleware before include_router for clarity.",
+    "signup() returns the inserted document directly — when twin_id is provided, no field on the returned user surfaces the created compare_room id; consider including it in the response so the frontend can deep-link immediately.",
+    "/api/share/twin/{user_id} does not rate-limit — public unauthenticated endpoint is enumerable by user_id. Consider adding light rate limiting / 404 instead of {valid:false} to reduce user-id enumeration surface (minor; teaser data is already non-sensitive)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration6.py"
+  ],
+  "success_rate": {
+    "backend": "100% (11/11)",
+    "frontend": "skipped"
+  },
+  "test_credentials": "Generated dynamically per test using TEST_iter6_<tag>_<uuid>@example.com",
+  "seed_data_creation": "Test users created with TEST_iter6_ prefix in email; face_embeddings test rows cleaned up by the test. User docs not deleted (acceptable per prior iterations).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All iteration 6 features verified end-to-end against the live preview URL. Key validations: (1) /api/share/twin/{id} is public, returns valid:true with photo_url present + age_band like '25s' + referral_code; returns {valid:false} for unknown/non-onboarded users; no email/password_hash/embedding/moderation_state leak. (2) Signup with twin_id auto-creates compare_rooms doc with title 'You vs <name>', source='twin_share', participants=[twin_id, new_user_id]; both users see it via /api/me/compare-rooms. (3) Invalid twin_id => signup still 200, no room. (4) ref+twin combo correctly increments friends_joined and bonus_matches by 3 (parity). (5) PgVectorStore stub raises NotImplementedError on upsert/delete/query_topk. (6) MongoVectorStore.query_topk pushes quality_score>=0.40 into the Mongo find() filter, verified by inserting a 0.1 quality row and confirming it is excluded. (7) WebSocket route /api/ws/chat/{match_id} is registered on app.routes.",
+  "rca of the issue": "N/A — no failures."
+}

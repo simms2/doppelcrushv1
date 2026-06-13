@@ -152,6 +152,8 @@ class SignupIn(BaseModel):
     password: str = Field(min_length=6)
     name: str = Field(min_length=1, max_length=40)
     ref: Optional[str] = None
+    twin_id: Optional[str] = None  # if set, auto-create compare room with that user
+    source: Optional[str] = None   # "twin", "share_card", "invite", etc — analytics
 
 
 class LoginIn(BaseModel):
@@ -239,9 +241,24 @@ async def signup(data: SignupIn):
                 "id": str(uuid.uuid4()),
                 "code": data.ref,
                 "new_user_id": user_id,
+                "source": data.source,
+                "twin_id": data.twin_id,
                 "created_at": now_iso(),
             }
         )
+    # Twin share: create a 1:1 compare room linking inviter ↔ new user
+    if data.twin_id:
+        twin = await db.users.find_one({"id": data.twin_id}, {"_id": 0})
+        if twin:
+            room_id = str(uuid.uuid4())[:8]
+            await db.compare_rooms.insert_one({
+                "id": room_id,
+                "host_id": twin["id"],
+                "title": f"You vs {twin.get('name','your twin')}",
+                "participants": [twin["id"], user_id],
+                "source": "twin_share",
+                "created_at": now_iso(),
+            })
     token = create_access_token(user_id)
     doc.pop("password_hash", None)
     doc.pop("_id", None)
@@ -603,6 +620,57 @@ async def referral_info(code: str):
         "name": user.get("name"),
         "photo_url": user.get("photo_url"),
     }
+
+
+# ---------------------------------------------------------------------------
+# Routes - shareable twin page (PUBLIC, no auth)
+# ---------------------------------------------------------------------------
+@api.get("/share/twin/{user_id}")
+async def twin_teaser(user_id: str):
+    """Public teaser used by the /your-twin/:user_id viral landing page.
+
+    Returns the minimum information needed to render the share landing:
+    name, age band, location, photo_url and the inviter's referral_code so
+    the CTA pre-fills the signup form correctly.
+    """
+    u = await db.users.find_one(
+        {"id": user_id, "onboarding_complete": True, "moderation_state": {"$ne": "blocked"}},
+        {"_id": 0, "password_hash": 0, "embedding": 0, "email": 0},
+    )
+    if not u or not u.get("photo_url"):
+        return {"valid": False}
+    age = u.get("age") or 0
+    age_band = f"{(age // 5) * 5}s" if age else None
+    return {
+        "valid": True,
+        "user": {
+            "id": u["id"],
+            "name": u.get("name"),
+            "age_band": age_band,
+            "location": u.get("location"),
+            "photo_url": u.get("photo_url"),
+            "mode": u.get("mode", "doppel"),
+            "bio": u.get("bio"),
+        },
+        "referral_code": u.get("referral_code"),
+    }
+
+
+@api.get("/me/compare-rooms")
+async def my_compare_rooms(user: dict = Depends(get_current_user)):
+    rooms = await db.compare_rooms.find(
+        {"participants": user["id"]}, {"_id": 0}
+    ).sort("created_at", -1).to_list(50)
+    out = []
+    for r in rooms:
+        out.append({
+            "id": r["id"],
+            "title": r.get("title"),
+            "participant_count": len(r.get("participants", [])),
+            "source": r.get("source"),
+            "created_at": r["created_at"],
+        })
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -978,6 +1046,35 @@ async def ws_chat(websocket: WebSocket, match_id: str, token: str = Query("")):
                         await peer.send_json({"type": "message", "message": {**msg, "_id": None}})
                     except Exception:
                         room.discard(peer)
+                # Auto-reply from seed profile for demo feel (parity with HTTP path).
+                other_id = next((u for u in match["users"] if u != user["id"]), None)
+                if other_id:
+                    other = await db.users.find_one({"id": other_id}, {"_id": 0})
+                    if other and other.get("is_seed"):
+                        import random
+                        replies = [
+                            f"omg {user.get('name', 'you')}, hi 👋",
+                            "wait — do we actually look alike?",
+                            "ok, you're cute. continue.",
+                            "send a selfie selfie. for science.",
+                            "what's your chaos mode pick rn?",
+                            "I'm into it ✨",
+                        ]
+                        reply = {
+                            "id": str(uuid.uuid4()),
+                            "match_id": match_id,
+                            "sender_id": other_id,
+                            "body": random.choice(replies),
+                            "created_at": now_iso(),
+                            "read": False,
+                            "auto": True,
+                        }
+                        await db.messages.insert_one(reply)
+                        for peer in list(room):
+                            try:
+                                await peer.send_json({"type": "message", "message": {**reply, "_id": None}})
+                            except Exception:
+                                room.discard(peer)
             elif t == "typing":
                 for peer in list(room):
                     if peer is websocket:

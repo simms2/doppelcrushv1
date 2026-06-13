@@ -36,8 +36,8 @@ export function AuthProvider({ children }) {
     return data.user;
   };
 
-  const signup = async (email, password, name, ref) => {
-    const { data } = await api.post("/auth/signup", { email, password, name, ref });
+  const signup = async (email, password, name, ref, twinId, source) => {
+    const { data } = await api.post("/auth/signup", { email, password, name, ref, twin_id: twinId, source });
     localStorage.setItem("dc_token", data.token);
     setUser(data.user);
     return data.user;

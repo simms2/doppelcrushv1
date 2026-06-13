@@ -162,13 +162,123 @@ class MongoVectorStore(VectorStore):
     ) -> list[tuple[float, dict]]:
         q = l2_normalise(query_embedding)
         scored: list[tuple[float, dict]] = []
-        async for doc in self.db[self.COLLECTION].find({}, {"_id": 0}):
+        # Push MIN_QUALITY into the Mongo query so we never load low-quality rows.
+        cursor = self.db[self.COLLECTION].find({"quality_score": {"$gte": MIN_QUALITY}}, {"_id": 0})
+        async for doc in cursor:
             if predicate and not predicate(doc):
                 continue
             sim = cosine_sim(q, doc.get("embedding") or [])
             scored.append((sim, doc))
         scored.sort(key=lambda x: x[0], reverse=True)
         return scored[:k]
+
+
+class PgVectorStore(VectorStore):
+    """**Future / production drop-in** using PostgreSQL + pgvector.
+
+    Wiring this up replaces only this single class — Ranker, the API surface
+    and the rest of the app stay untouched. Schema:
+
+        CREATE EXTENSION IF NOT EXISTS vector;
+        CREATE TABLE face_embeddings (
+            user_id        text PRIMARY KEY,
+            embedding      vector(128) NOT NULL,
+            model_version  text NOT NULL,
+            quality_score  real NOT NULL,
+            face_detected  boolean NOT NULL DEFAULT true,
+            created_at     timestamptz NOT NULL DEFAULT now(),
+            updated_at     timestamptz NOT NULL DEFAULT now()
+        );
+        -- IVFFlat / HNSW index for ANN at scale:
+        CREATE INDEX face_embeddings_emb_idx
+            ON face_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+        CREATE INDEX face_embeddings_quality_idx ON face_embeddings (quality_score);
+
+    Query (MIN_QUALITY moves into the WHERE clause — the predicate is now
+    pushed all the way down to the database):
+
+        SELECT user_id, model_version, quality_score, face_detected,
+               1 - (embedding <=> %s::vector) AS similarity
+          FROM face_embeddings
+         WHERE quality_score >= %s        -- MIN_QUALITY = 0.40
+           AND user_id <> %s              -- exclude self
+        ORDER BY embedding <=> %s::vector -- pgvector ANN distance
+         LIMIT %s;
+
+    The ``<=>`` operator gives cosine **distance** (0=identical, 2=opposite),
+    so similarity = 1 - distance.
+
+    Migration path from MongoVectorStore:
+        1.  Stand up PG + pgvector.
+        2.  `INSERT INTO face_embeddings SELECT … FROM mongo_dump`.
+        3.  Replace `vector_store = MongoVectorStore(db)` with
+            `vector_store = PgVectorStore(pg_pool)` in server.py.
+        4.  Drop `face_embeddings` collection from Mongo.
+        5.  No other code changes — Ranker, /discover, /compare are unchanged.
+
+    Qdrant / Weaviate / Milvus follow the same pattern: implement
+    upsert / delete / query_topk against the client SDK and push the
+    quality filter into the payload-filter clause.
+    """
+
+    def __init__(self, pg_pool):  # pragma: no cover — stub
+        self.pool = pg_pool
+
+    async def upsert(self, user_id: str, embedding: list[float], metadata: dict) -> None:
+        # async with self.pool.acquire() as conn:
+        #     await conn.execute(
+        #         """
+        #         INSERT INTO face_embeddings
+        #             (user_id, embedding, model_version, quality_score, face_detected, updated_at)
+        #         VALUES ($1, $2::vector, $3, $4, $5, now())
+        #         ON CONFLICT (user_id) DO UPDATE SET
+        #             embedding = EXCLUDED.embedding,
+        #             model_version = EXCLUDED.model_version,
+        #             quality_score = EXCLUDED.quality_score,
+        #             face_detected = EXCLUDED.face_detected,
+        #             updated_at = now();
+        #         """,
+        #         user_id,
+        #         l2_normalise(embedding),
+        #         metadata.get("model_version", MODEL_FACEAPI),
+        #         float(metadata.get("quality_score", 0.6)),
+        #         bool(metadata.get("face_detected", True)),
+        #     )
+        raise NotImplementedError("PgVectorStore is a future-ready stub.")
+
+    async def delete(self, user_id: str) -> None:  # pragma: no cover
+        # async with self.pool.acquire() as conn:
+        #     await conn.execute("DELETE FROM face_embeddings WHERE user_id = $1", user_id)
+        raise NotImplementedError
+
+    async def query_topk(
+        self,
+        query_embedding: list[float],
+        predicate: Optional[Callable[[dict], bool]] = None,
+        k: int = 200,
+    ) -> list[tuple[float, dict]]:  # pragma: no cover
+        # q = l2_normalise(query_embedding)
+        # async with self.pool.acquire() as conn:
+        #     rows = await conn.fetch(
+        #         """
+        #         SELECT user_id, model_version, quality_score, face_detected,
+        #                1 - (embedding <=> $1::vector) AS sim,
+        #                embedding
+        #           FROM face_embeddings
+        #          WHERE quality_score >= $2
+        #          ORDER BY embedding <=> $1::vector
+        #          LIMIT $3
+        #         """,
+        #         q, MIN_QUALITY, k,
+        #     )
+        # out = []
+        # for r in rows:
+        #     doc = dict(r)
+        #     if predicate and not predicate(doc):
+        #         continue
+        #     out.append((float(r["sim"]), doc))
+        # return out
+        raise NotImplementedError
 
 
 # ── Ranker ─────────────────────────────────────────────────────────────────
