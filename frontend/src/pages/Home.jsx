@@ -39,19 +39,22 @@ export default function Home() {
                 Selfie first. Crush later.
               </div>
 
-              <h1 className="font-display text-5xl sm:text-6xl lg:text-7xl xl:text-8xl font-bold leading-[0.95] text-slate-900">
-                Find your <br />
-                <span className="crush-text-grad">DoppelCrush</span>
+              <h1 className="font-display text-6xl sm:text-7xl lg:text-[5.5rem] xl:text-[6.5rem] font-bold leading-[0.92] text-slate-900">
+                <span className="crush-sticker-text-dark">Find your</span><br />
+                <span className="crush-sticker-text crush-text-grad">DoppelCrush</span>
               </h1>
 
               {/* Floating kawaii heart next to title */}
-              <div className="absolute right-2 top-12 w-24 sm:w-28 lg:w-32 hidden md:block animate-floaty">
+              <div className="absolute right-2 top-12 w-28 sm:w-32 lg:w-40 hidden md:block animate-floaty">
                 <KawaiiHeart />
               </div>
 
-              <p className="mt-6 text-lg sm:text-xl text-slate-700 max-w-xl font-body leading-relaxed">
-                Upload your selfie, pick your vibe, and discover people who match your look — or
-                completely change <span className="underline decoration-pink-400 decoration-4 underline-offset-2 font-semibold">your type</span>.
+              <p className="mt-8 text-lg sm:text-xl text-slate-700 max-w-xl font-body leading-relaxed">
+                Ever wondered why so many couples look alike?
+                <br className="hidden sm:block" />
+                Wonder no more and find your DoppelCrush.
+                <br className="hidden sm:block" />
+                Upload your selfie and <span className="underline decoration-pink-400 decoration-4 underline-offset-2 font-semibold">we'll do the rest</span>.
               </p>
 
               <div className="mt-8 flex flex-wrap items-center gap-3 sm:gap-4">
@@ -118,7 +121,7 @@ export default function Home() {
                 <Sticker kind="heart" size={108} className="absolute -bottom-2 -left-6 -rotate-12" />
                 <div className="bg-white rounded-2xl p-2 rotate-3 shadow-lg border-2 border-pink-100">
                   <img
-                    src="https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=400&q=80"
+                    src="https://images.unsplash.com/photo-1494774157365-9e04c6720e47?w=600&q=85"
                     alt="Twin duo"
                     className="w-full h-32 sm:h-36 object-cover rounded-xl"
                   />

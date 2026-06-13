@@ -56,10 +56,13 @@ export default function Header({ inline = false }) {
         ) : (
           <button
             onClick={() => navigate("/auth")}
-            className="bg-slate-900 text-white rounded-full font-display font-bold px-6 py-3 text-base hover:bg-black transition-transform hover:scale-105"
+            className="bg-slate-900 text-white rounded-full font-display font-bold px-7 py-3 text-base hover:bg-black transition-transform hover:scale-105 inline-flex items-center gap-2 relative"
             data-testid="header-start-btn"
           >
             Start
+            <svg width="22" height="22" viewBox="0 0 22 22" className="absolute -right-3 -top-2 rotate-12" aria-hidden="true">
+              <path d="M2 18 C 8 4, 14 16, 20 4" stroke="#ff2d8a" strokeWidth="3" strokeLinecap="round" fill="none"/>
+            </svg>
           </button>
         )}
       </div>
