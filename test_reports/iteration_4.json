@@ -1,0 +1,52 @@
+{
+  "summary": "Iteration 4 backend tests for the production-minded matching redesign (VectorStore + Ranker). 29/29 passing (100%). Coverage: math sanity (cosine_sim, l2_normalise, twin_energy_score, chaos_score band-zero), face_embeddings invariants (1 row/user, fields, L2-normalised, upsert on re-onboarding), seed profiles populated in face_embeddings with synthetic-v1 + quality 0.7, /discover doppel sort + shape, chaos band exclusion (no zero-score items), self+swiped exclusion, looking_for=women/men/everyone gender filter, MIN_QUALITY=0.40 filter excludes low-quality users from others' discover, PATCH /me re-upserts vector store entry when embedding provided AND leaves it untouched otherwise, DELETE /me removes user + face_embeddings + share_events and invalidates the JWT, full auth-gating sweep on 6 endpoints.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/onboarding",
+        "issue": "Backwards-compat legacy `embedding` and `embedding_quality` still written onto users doc (intentional per agent_to_agent_context). Long-term these should be migrated/dropped once all clients read face_embeddings."
+      },
+      {
+        "endpoint": "PATCH /api/me",
+        "issue": "When PATCH re-upserts the vector, it hard-codes model_version=MODEL_FACEAPI, ignoring the optional `embedding_model` field in the request body. Spec accepts that field; current code doesn't propagate it to the vector store. (Tests still pass because /onboarding upserts and PATCH only updates similarity/quality.) Fix: pass updates.get('embedding_model', user.get('embedding_model') or MODEL_FACEAPI)."
+      },
+      {
+        "endpoint": "GET /api/discover",
+        "issue": "discover requires `user_embedding` from the legacy user.embedding field; reads from users not from face_embeddings. If a future flow writes only to vector_store via PATCH but legacy user.embedding is empty, discover will return []. Consider sourcing the viewer embedding from face_embeddings collection (the canonical store)."
+      },
+      {
+        "endpoint": "DELETE /api/me",
+        "issue": "Cleanup deletes matches whose `users` includes the deleted user, but does NOT delete messages sent by the OTHER party in those matches (only `sender_id: uid` is removed). Orphaned messages remain pointing at deleted matches. Low priority for MVP."
+      }
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration4.py",
+    "/app/test_reports/pytest/iteration4_results.xml"
+  ],
+  "action_items": [
+    "PATCH /api/me should respect the `embedding_model` field instead of hard-coding MODEL_FACEAPI when re-upserting the vector store (matching.py + server.py).",
+    "Consider sourcing the viewer's embedding in /discover from the face_embeddings collection (canonical) rather than user.embedding (legacy) so the two stores can diverge cleanly.",
+    "DELETE /api/me also remove messages tied to matches the user was in (currently only sender_id == uid is deleted)."
+  ],
+  "critical_code_review_comments": [
+    "server.py now 1000 lines: matching subsystem injected here works, but routers/{auth,discover,me,chat,upload}.py split is overdue.",
+    "Ranker.rank() uses an in-process linear scan via MongoVectorStore — fine for <10k profiles; production switch will need real ANN (pgvector/Qdrant). The VectorStore abstraction is clean and future-proof.",
+    "twin_energy_score synthetic branch maps sim=0 -> 67.5 which python rounds to 68 via banker's rounding (test accepts 65..70). Doc string says 'around 67' so this is fine.",
+    "chaos_score returns 0 outside band — Ranker also pre-filters in mode='chaos', so out-of-band candidates are never even emitted. Correct double-defence.",
+    "MIN_QUALITY=0.40 is checked inside MongoVectorStore predicate (good — pushed down to store layer) AND nowhere else, so swapping to pgvector requires re-implementing that predicate filter. Document this for the next storage backend.",
+    "seed_profiles startup is idempotent (find by email) BUT will not refresh existing seeds' embeddings/quality on a model bump. For demo iteration that's fine.",
+    "PATCH /me re-upserts the vector only if `updates['embedding']` is truthy AND in updates — if a client sends `embedding: []` it's accepted by Pydantic (no length validator) and SKIPS the upsert, leaving stale embedding. Add `min_length=128` constraint or explicit check.",
+    "discover's `if not p.get('photo_url'): continue` silently drops candidates after they've already passed the ranker, so the returned count may be < limit even when ranker returned `limit` items. OK but worth comment."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration4.py (new, 29 tests, 5 classes)"],
+  "success_rate": {"backend": "100% (29/29)", "frontend": "not tested (per request)"},
+  "test_credentials": "/app/memory/test_credentials.md absent — tests create ad-hoc iter4_* @example.com / crushme123 users per test.",
+  "seed_data_creation": "No global seed mutation. Per-test users created via /api/auth/signup + /api/onboarding. DELETE /me test cleans up its own user. Seed profile count asserted == 12 (read-only).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 4 (VectorStore + Ranker) all green. Note that /discover sources the viewer's query embedding from user.embedding (legacy) not from face_embeddings — so any test that writes via the vector_store path only (PATCH without legacy field also being updated) won't surface in discover. Current PATCH writes BOTH (user.embedding via $set updates and vector_store.upsert), so it's consistent. The MIN_QUALITY=0.40 predicate lives in MongoVectorStore.query_topk — swapping vector backends will require re-implementing it. Iterations 1-3 endpoints not re-run per scope.",
+  "rca of the issue": "N/A — no failures."
+}

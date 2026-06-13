@@ -4,7 +4,7 @@ import { Camera, Check, Loader2, AlertTriangle, LogOut, Save } from "lucide-reac
 import Header from "@/components/Header";
 import { useAuth } from "@/contexts/AuthContext";
 import { api, formatApiError } from "@/lib/api";
-import { fileToImage, getFaceEmbedding, loadFaceModels } from "@/lib/face";
+import { fileToImage, validateSelfie, loadFaceModels, MODEL_VERSION } from "@/lib/face";
 import { Sticker } from "@/components/Stickers";
 
 export default function Profile() {
@@ -19,6 +19,7 @@ export default function Profile() {
   const [lookingFor, setLookingFor] = useState(user?.looking_for || "everyone");
   const [photoUrl, setPhotoUrl] = useState(user?.photo_url || "");
   const [newEmbedding, setNewEmbedding] = useState(null);
+  const [newQuality, setNewQuality] = useState(null);
 
   const [faceStatus, setFaceStatus] = useState(""); // loading | ok | no_face
   const [error, setError] = useState("");
@@ -33,14 +34,15 @@ export default function Profile() {
     try {
       const { img } = await fileToImage(file);
       await new Promise((r) => (img.complete ? r() : (img.onload = r)));
-      const result = await getFaceEmbedding(img);
-      if (!result.ok) { setFaceStatus("no_face"); setError("Couldn't find a clear face."); return; }
+      const v = await validateSelfie(img);
+      if (!v.ok) { setFaceStatus("no_face"); setError(v.message); return; }
       const form = new FormData();
       form.append("file", file, file.name || "selfie.jpg");
       const { data } = await api.post("/upload/selfie", form, { headers: { "Content-Type": "multipart/form-data" } });
       const absolute = data.url.startsWith("http") ? data.url : `${process.env.REACT_APP_BACKEND_URL}${data.url}`;
       setPhotoUrl(absolute);
-      setNewEmbedding(result.embedding);
+      setNewEmbedding(v.embedding);
+      setNewQuality(v.quality_score);
       setFaceStatus("ok");
     } catch {
       setFaceStatus("no_face"); setError("Couldn't upload that photo.");
@@ -52,7 +54,11 @@ export default function Profile() {
     try {
       const body = { name, bio, location, mode, looking_for: lookingFor };
       if (photoUrl && photoUrl !== user?.photo_url) body.photo_url = photoUrl;
-      if (newEmbedding) body.embedding = newEmbedding;
+      if (newEmbedding) {
+        body.embedding = newEmbedding;
+        body.embedding_quality = newQuality ?? 0.6;
+        body.embedding_model = MODEL_VERSION;
+      }
       const { data } = await api.patch("/me", body);
       setUser(data);
       setSavedAt(Date.now());

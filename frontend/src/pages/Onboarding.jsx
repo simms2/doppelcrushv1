@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Camera, Check, ArrowRight, Loader2, AlertTriangle, Zap, Heart } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { api, formatApiError } from "@/lib/api";
-import { fileToImage, getFaceEmbedding, loadFaceModels } from "@/lib/face";
+import { fileToImage, validateSelfie, loadFaceModels, MODEL_VERSION } from "@/lib/face";
 import { LogoBadge } from "@/components/Header";
 import { Sticker } from "@/components/Stickers";
 
@@ -20,6 +20,7 @@ export default function Onboarding() {
   const [previewUrl, setPreviewUrl] = useState("");
   const [photoData, setPhotoData] = useState(""); // dataURL stored alongside
   const [embedding, setEmbedding] = useState([]);
+  const [quality, setQuality] = useState(0);
   const [faceStatus, setFaceStatus] = useState(""); // "loading" | "ok" | "no_face"
   const fileRef = useRef();
 
@@ -85,6 +86,8 @@ export default function Onboarding() {
         location,
         photo_url: photoData || (user?.photo_url ?? null),
         embedding,
+        quality_score: quality || 0.6,
+        model_version: MODEL_VERSION,
       });
       setUser(data);
       navigate("/discover");
@@ -157,10 +160,22 @@ export default function Onboarding() {
                       <span className="text-slate-600 inline-flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Reading your face card…</span>
                     )}
                     {faceStatus === "ok" && (
-                      <span className="text-emerald-600 inline-flex items-center gap-2"><Check className="w-4 h-4" /> Face card captured.</span>
+                      <>
+                        <span className="text-emerald-600 inline-flex items-center gap-2"><Check className="w-4 h-4" /> Face card captured.</span>
+                        <div className="mt-2 flex items-center gap-2 text-xs">
+                          <span className="text-slate-500">Quality</span>
+                          <div className="w-32 h-2 rounded-full bg-slate-100 overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-pink-500 to-orange-400"
+                              style={{ width: `${Math.round(quality * 100)}%` }}
+                            />
+                          </div>
+                          <span className="font-display font-bold text-slate-700">{Math.round(quality * 100)}%</span>
+                        </div>
+                      </>
                     )}
                     {faceStatus === "no_face" && (
-                      <span className="text-rose-600 inline-flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> Need a clearer single face.</span>
+                      <span className="text-rose-600 inline-flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> {error || "Need a clearer single face."}</span>
                     )}
                   </div>
                 </div>

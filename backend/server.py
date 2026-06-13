@@ -24,6 +24,14 @@ from pydantic import BaseModel, EmailStr, Field
 from seed_data import get_seed_profiles_with_embeddings
 from storage import APP_NAME, get_object, init_storage, put_object
 from moderation import check_selfie
+from matching import (
+    MODEL_FACEAPI,
+    MODEL_SYNTHETIC,
+    MongoVectorStore,
+    Ranker,
+    chaos_score,
+    twin_energy_score,
+)
 
 # ---------------------------------------------------------------------------
 # Config & DB
@@ -35,6 +43,19 @@ JWT_TTL_DAYS = 30
 mongo_url = os.environ["MONGO_URL"]
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ["DB_NAME"]]
+
+# Matching subsystem (swap MongoVectorStore for pgvector/Qdrant at scale).
+vector_store = MongoVectorStore(db)
+
+
+async def _bulk_load_users(user_ids):
+    if not user_ids:
+        return {}
+    docs = await db.users.find({"id": {"$in": list(user_ids)}}, {"_id": 0, "password_hash": 0}).to_list(500)
+    return {d["id"]: d for d in docs}
+
+
+ranker = Ranker(vector_store, _bulk_load_users)
 
 app = FastAPI(title="DoppelCrush API")
 api = APIRouter(prefix="/api")
@@ -147,6 +168,8 @@ class OnboardingIn(BaseModel):
     location: Optional[str] = ""
     photo_url: Optional[str] = None
     embedding: List[float] = Field(default_factory=list)
+    quality_score: Optional[float] = Field(default=0.6, ge=0.0, le=1.0)
+    model_version: Optional[str] = MODEL_FACEAPI
 
 
 class SwipeIn(BaseModel):
@@ -259,10 +282,23 @@ async def complete_onboarding(
         "location": data.location or "",
         "photo_url": data.photo_url,
         "embedding": data.embedding,
+        "embedding_quality": data.quality_score,
+        "embedding_model": data.model_version,
         "onboarding_complete": True,
+        "moderation_state": "ok",
         "onboarded_at": now_iso(),
     }
     await db.users.update_one({"id": user["id"]}, {"$set": updates})
+    if data.embedding:
+        await vector_store.upsert(
+            user["id"],
+            data.embedding,
+            {
+                "model_version": data.model_version or MODEL_FACEAPI,
+                "quality_score": data.quality_score or 0.6,
+                "face_detected": True,
+            },
+        )
     refreshed = await db.users.find_one({"id": user["id"]}, {"_id": 0})
     refreshed.pop("password_hash", None)
     refreshed.pop("embedding", None)
@@ -297,50 +333,42 @@ async def discover(
     limit: int = 12,
     user: dict = Depends(get_current_user),
 ):
-    """Return ranked candidate profiles for the current user."""
+    """Two-stage ranking: ANN retrieval ➜ product rerank.
+
+    Returns Doppel (high similarity, quality-weighted) or Chaos (controlled
+    contrast band) candidates. See backend/matching.py for the algorithm.
+    """
     active_mode = mode or user.get("mode", "doppel")
-    looking_for = user.get("looking_for", "everyone")
     user_embedding = user.get("embedding") or []
+    if not user_embedding:
+        return {"mode": active_mode, "results": []}
     swiped_ids = {
         s["target_id"]
         async for s in db.swipes.find({"user_id": user["id"]}, {"target_id": 1})
     }
-
-    query: dict = {"id": {"$ne": user["id"], "$nin": list(swiped_ids)}}
-    gf = _gender_filter(looking_for)
-    if gf:
-        query["gender"] = {"$in": gf}
-
-    candidates = await db.users.find(query, {"_id": 0}).to_list(500)
-    # Filter to only those with an embedding & photo
-    candidates = [c for c in candidates if c.get("embedding") and c.get("photo_url")]
-
-    if user_embedding:
-        scored = [
-            (cosine_similarity(user_embedding, c["embedding"]), c) for c in candidates
-        ]
-    else:
-        scored = [(0.0, c) for c in candidates]
-
-    if active_mode == "doppel":
-        scored.sort(key=lambda x: x[0], reverse=True)
-    else:  # chaos => most different / shuffle bottom half
-        scored.sort(key=lambda x: x[0])
-
-    out = []
-    for sim, c in scored[:limit]:
-        # Map cosine [-1,1] -> percent [0,100]; clamp for display
-        pct = max(0, min(100, int(round((sim + 1) * 50))))
-        # For Chaos mode display "twist" score = 100 - pct
-        display = pct if active_mode == "doppel" else max(0, 100 - pct)
-        out.append(
+    ranked = await ranker.rank(
+        user,
+        user_embedding,
+        mode=active_mode,
+        k=limit,
+        retrieval_k=400,
+        swiped_ids=swiped_ids,
+    )
+    results = []
+    for r in ranked:
+        p = r["profile"]
+        if not p.get("photo_url"):
+            continue
+        results.append(
             {
-                **public_profile(c),
-                "score": display,
+                **public_profile(p),
+                "score": r["score"],
                 "mode": active_mode,
+                "quality": r["quality"],
+                "explanation": r["explanation"],
             }
         )
-    return {"mode": active_mode, "results": out}
+    return {"mode": active_mode, "results": results}
 
 
 @api.post("/swipe")
@@ -520,6 +548,8 @@ class ProfilePatch(BaseModel):
     looking_for: Optional[Literal["women", "men", "everyone"]] = None
     photo_url: Optional[str] = None
     embedding: Optional[List[float]] = None
+    embedding_quality: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    embedding_model: Optional[str] = None
 
 
 @api.patch("/me")
@@ -528,10 +558,35 @@ async def patch_me(data: ProfilePatch, user: dict = Depends(get_current_user)):
     if not updates:
         return user
     await db.users.update_one({"id": user["id"]}, {"$set": updates})
+    # re-upsert the embedding if it was changed
+    if "embedding" in updates and updates["embedding"]:
+        await vector_store.upsert(
+            user["id"],
+            updates["embedding"],
+            {
+                "model_version": MODEL_FACEAPI,
+                "quality_score": updates.get("embedding_quality", user.get("embedding_quality", 0.6)),
+                "face_detected": True,
+            },
+        )
     refreshed = await db.users.find_one({"id": user["id"]}, {"_id": 0})
     refreshed.pop("password_hash", None)
     refreshed.pop("embedding", None)
     return refreshed
+
+
+@api.delete("/me")
+async def delete_me(user: dict = Depends(get_current_user)):
+    """Privacy: remove user, their face embedding, swipes, messages, files."""
+    uid = user["id"]
+    await vector_store.delete(uid)
+    await db.users.delete_one({"id": uid})
+    await db.swipes.delete_many({"$or": [{"user_id": uid}, {"target_id": uid}]})
+    await db.matches.delete_many({"users": uid})
+    await db.messages.delete_many({"sender_id": uid})
+    await db.files.update_many({"user_id": uid}, {"$set": {"is_deleted": True}})
+    await db.share_events.delete_many({"user_id": uid})
+    return {"ok": True}
 
 
 @api.get("/referral/{code}")
@@ -802,18 +857,26 @@ async def ensure_indexes():
     await db.matches.create_index("users")
     await db.messages.create_index([("match_id", 1), ("created_at", 1)])
     await db.files.create_index("storage_path")
+    await db.face_embeddings.create_index("user_id", unique=True)
 
 
 async def seed_profiles():
-    """Insert seed/demo profiles if missing."""
+    """Insert seed/demo profiles if missing AND populate face_embeddings."""
     seeds = get_seed_profiles_with_embeddings()
     for s in seeds:
         existing = await db.users.find_one({"email": f"{s['username']}@seed.doppelcrush"})
         if existing:
+            # ensure their embedding exists in the vector store
+            await vector_store.upsert(
+                existing["id"],
+                s["embedding"],
+                {"model_version": MODEL_SYNTHETIC, "quality_score": 0.7, "face_detected": True},
+            )
             continue
+        uid = str(uuid.uuid4())
         await db.users.insert_one(
             {
-                "id": str(uuid.uuid4()),
+                "id": uid,
                 "email": f"{s['username']}@seed.doppelcrush",
                 "name": s["name"],
                 "age": s["age"],
@@ -822,16 +885,24 @@ async def seed_profiles():
                 "photo_url": s["photo_url"],
                 "location": s["location"],
                 "embedding": s["embedding"],
+                "embedding_model": MODEL_SYNTHETIC,
+                "embedding_quality": 0.7,
                 "looking_for": "everyone",
                 "mode": "doppel",
                 "onboarding_complete": True,
+                "moderation_state": "ok",
                 "is_seed": True,
                 "password_hash": hash_password(secrets.token_hex(16)),
                 "referral_code": generate_referral_code(),
                 "created_at": now_iso(),
             }
         )
-    logger.info("Seed profiles ensured.")
+        await vector_store.upsert(
+            uid,
+            s["embedding"],
+            {"model_version": MODEL_SYNTHETIC, "quality_score": 0.7, "face_detected": True},
+        )
+    logger.info("Seed profiles + embeddings ensured.")
 
 
 @app.on_event("startup")
