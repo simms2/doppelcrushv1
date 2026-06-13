@@ -247,12 +247,13 @@ async def signup(data: SignupIn):
             }
         )
     # Twin share: create a 1:1 compare room linking inviter ↔ new user
+    twin_room_id = None
     if data.twin_id:
         twin = await db.users.find_one({"id": data.twin_id}, {"_id": 0})
         if twin:
-            room_id = str(uuid.uuid4())[:8]
+            twin_room_id = str(uuid.uuid4())[:8]
             await db.compare_rooms.insert_one({
-                "id": room_id,
+                "id": twin_room_id,
                 "host_id": twin["id"],
                 "title": f"You vs {twin.get('name','your twin')}",
                 "participants": [twin["id"], user_id],
@@ -262,7 +263,7 @@ async def signup(data: SignupIn):
     token = create_access_token(user_id)
     doc.pop("password_hash", None)
     doc.pop("_id", None)
-    return {"token": token, "user": doc}
+    return {"token": token, "user": doc, "twin_room_id": twin_room_id}
 
 
 @api.post("/auth/login")

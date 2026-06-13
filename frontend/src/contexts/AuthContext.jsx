@@ -40,6 +40,9 @@ export function AuthProvider({ children }) {
     const { data } = await api.post("/auth/signup", { email, password, name, ref, twin_id: twinId, source });
     localStorage.setItem("dc_token", data.token);
     setUser(data.user);
+    if (data.twin_room_id) {
+      localStorage.setItem("dc_pending_twin_room", data.twin_room_id);
+    }
     return data.user;
   };
 

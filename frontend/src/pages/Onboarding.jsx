@@ -90,7 +90,14 @@ export default function Onboarding() {
         model_version: MODEL_VERSION,
       });
       setUser(data);
-      navigate("/discover");
+      // If they signed up from a twin share, drop them straight into the compare room
+      const pendingTwinRoom = localStorage.getItem("dc_pending_twin_room");
+      if (pendingTwinRoom) {
+        localStorage.removeItem("dc_pending_twin_room");
+        navigate(`/compare/${pendingTwinRoom}`);
+      } else {
+        navigate("/discover");
+      }
     } catch (err) {
       setError(formatApiError(err));
     } finally {
